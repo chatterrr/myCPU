@@ -72,6 +72,11 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         else s.pc = pc0 + 4;
         break;
 
+    case Opcode::LU12I_W:
+        s.gpr[in.rd] = (uint32_t)(in.imm<<12);
+        s.pc += 4;
+        break;
+
     case Opcode::INVALID:
     default:
         throw std::runtime_error("invalid instruction");
