@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Prerequisites
 *.d
 
@@ -39,3 +40,189 @@
 
 # debug information files
 *.dwo
+=======
+# =========================================================
+# Visual Studio + CMake + C/C++ project
+# Recommended for: D:\Projects\myCPU_compatible
+# =========================================================
+
+# -----------------------------
+# Git / OS / editor noise
+# -----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code / JetBrains (optional)
+.vscode/
+.idea/
+
+# -----------------------------
+# Visual Studio cache / temp
+# -----------------------------
+.vs/
+*.VC.db
+*.VC.VC.opendb
+*.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# -----------------------------
+# Build directories
+# -----------------------------
+build/
+build-*/
+cmake-build-*/
+out/
+out-*/
+bin/
+lib/
+
+# Common Visual Studio build dirs
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+x64/
+x86/
+Win32/
+ARM/
+ARM64/
+
+# Nested build output dirs
+**/Debug/
+**/Release/
+**/RelWithDebInfo/
+**/MinSizeRel/
+**/x64/
+**/x86/
+**/Win32/
+**/ARM/
+**/ARM64/
+
+# -----------------------------
+# CMake generated files
+# -----------------------------
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+DartConfiguration.tcl
+CMakeScripts/
+CMakeTmp/
+cmake_uninstall.cmake
+Makefile
+
+# CPack
+CPackConfig.cmake
+CPackSourceConfig.cmake
+_CPack_Packages/
+
+# -----------------------------
+# Ninja / NMake / other generators
+# -----------------------------
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
+
+# -----------------------------
+# Visual Studio / MSBuild generated
+# Keep hand-written project files if you have them.
+# Do NOT ignore *.sln / *.vcxproj globally.
+# -----------------------------
+*.ilk
+*.ipdb
+*.iobj
+*.idb
+*.pdb
+*.pch
+*.obj
+*.o
+*.lo
+*.sbr
+*.tlog
+*.lastbuildstate
+*.recipe
+*.rsp
+*.tmp
+*.temp
+*.log
+
+# Incremental linker / debug / profiling
+*.pgc
+*.pgd
+
+# -----------------------------
+# Executables / libraries
+# -----------------------------
+*.exe
+*.dll
+*.lib
+*.exp
+*.so
+*.dylib
+*.a
+
+# -----------------------------
+# Test / coverage artifacts
+# -----------------------------
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+coverage/
+coverage-*/
+*.coverage
+*.xml
+
+# CTest / test results
+Testing/
+test-results/
+TestResults/
+
+# -----------------------------
+# Sanitizer / crash / runtime dumps
+# -----------------------------
+*.dmp
+*.stackdump
+
+# -----------------------------
+# Packaging / archives
+# -----------------------------
+*.7z
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+
+# -----------------------------
+# Python helper scripts cache (if any)
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# -----------------------------
+# Local environment files
+# -----------------------------
+.env
+.env.*
+*.local
+
+# -----------------------------
+# Generated documentation / graphs (optional)
+# Uncomment if your project generates them locally
+# -----------------------------
+# docs/_build/
+# *.dot
+# *.png
+# *.svg
+>>>>>>> master
