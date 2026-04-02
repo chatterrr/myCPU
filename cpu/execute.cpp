@@ -10,42 +10,49 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
     uint32_t pc0 = s.pc;
 
     switch (in.op) {
-    case Opcode::ADD_W:
+    case Opcode::ADD_W: {
         s.gpr[in.rd] = s.gpr[in.rj] + s.gpr[in.rk];
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::SUB_W:
+    case Opcode::SUB_W: {
         s.gpr[in.rd] = s.gpr[in.rj] - s.gpr[in.rk];
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::SLT:
+    case Opcode::SLT: {
         int32_t lhs = static_cast<int32_t>(s.gpr[in.rj]);
         int32_t rhs = static_cast<int32_t>(s.gpr[in.rk]);
         s.gpr[in.rd] = (lhs < rhs) ? 1 : 0;
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::ADDI_W:
+    case Opcode::ADDI_W: {
         s.gpr[in.rd] = s.gpr[in.rj] + (uint32_t)in.imm;
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::AND:
+    case Opcode::AND: {
         s.gpr[in.rd] = s.gpr[in.rj] & s.gpr[in.rk];
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::OR:
+    case Opcode::OR: {
         s.gpr[in.rd] = s.gpr[in.rj] | s.gpr[in.rk];
         s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::XOR:
+    case Opcode::XOR: {
         s.gpr[in.rd] = s.gpr[in.rj] ^ s.gpr[in.rk];
         s.pc = pc0 + 4;
         break;
+    }
 
     case Opcode::LD_W: {
         uint32_t addr = s.gpr[in.rj] + (uint32_t)in.imm;
@@ -64,27 +71,31 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         break;
     }
 
-    case Opcode::B:
+    case Opcode::B: {
         // 约定：目标 = pc0 + 4 + imm（示例）
         s.pc = pc0 + 4 + (uint32_t)in.imm;
         break;
+    }
 
-    case Opcode::BEQ:
+    case Opcode::BEQ: {
         if (s.gpr[in.rj] == s.gpr[in.rk]) s.pc = pc0 + 4 + (uint32_t)in.imm;
         else s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::BNE:
+    case Opcode::BNE: {
         if (s.gpr[in.rj] != s.gpr[in.rk]) s.pc = pc0 + 4 + (uint32_t)in.imm;
         else s.pc = pc0 + 4;
         break;
+    }
 
-    case Opcode::LU12I_W:
-        s.gpr[in.rd] = (uint32_t)(in.imm<<12);
+    case Opcode::LU12I_W: {
+        s.gpr[in.rd] = (uint32_t)(in.imm << 12);
         s.pc += 4;
         break;
+    }
 
-    case Opcode::INVALID:
+    case Opcode::INVALID: {}
     default:
         throw std::runtime_error("invalid instruction");
     }

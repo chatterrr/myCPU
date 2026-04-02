@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -154,32 +155,43 @@ namespace {
         expect(thrown, "invalid program should throw runtime_error");
     }
 
-    void test_lu12i_program_when_enabled() {
-        if (!tests::kEnableLu12iIntegrationTest) {
-            return;
-        }
+    void test_slt_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kSltProgramWords);
+        ctx.cpu.run(tests::kSltProgramSteps);
 
-        if (tests::kLu12iProgramWords.empty()) {
-            throw std::runtime_error(
-                "[TEST FAIL] lu12i integration test is enabled, but kLu12iProgramWords is empty");
-        }
-
-        throw std::runtime_error(
-            "[TODO] Implement lu12i integration assertions after member A finalizes lu12i.w support.");
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[3] == 1, "slt: r3 should be 1");
+        expect(s.gpr[4] == 0, "slt: r4 should be 0");
+        expect(s.gpr[5] == 0xFFFFFFFFu, "slt: r5 should be -1 in two's complement");
+        expect(s.gpr[7] == 1, "slt: r7 should be 1");
     }
 
-    void test_uart_e2e_program_when_enabled() {
-        if (!tests::kEnableUartE2EIntegrationTest) {
-            return;
-        }
+    void test_lu12i_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kLu12iProgramWords);
+        ctx.cpu.run(tests::kLu12iProgramSteps);
 
-        if (tests::kUartProgramWords.empty()) {
-            throw std::runtime_error(
-                "[TEST FAIL] UART E2E integration test is enabled, but kUartProgramWords is empty");
-        }
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[13] == 0x12345000u, "lu12i: r13 should be 0x12345000");
+        expect(s.gpr[14] == config::UART_ADDR, "lu12i: r14 should become UART_ADDR");
+        expect(s.gpr[0] == 0, "lu12i: r0 must stay zero");
+    }
 
-        throw std::runtime_error(
-            "[TODO] Implement UART E2E integration assertions after large-address path is available.");
+    void test_uart_e2e_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kUartProgramWords);
+
+        std::ostringstream capture;
+        auto* old_buf = std::cout.rdbuf(capture.rdbuf());
+
+        ctx.cpu.run(tests::kUartProgramSteps);
+
+        std::cout.rdbuf(old_buf);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[15] == config::UART_ADDR, "uart-e2e: r15 should be UART_ADDR");
+        expect(capture.str() == "Hi!", "uart-e2e: UART output should be Hi!");
     }
 
 }  // namespace
@@ -195,13 +207,11 @@ int main() {
         test_r0_write_protect_program();
         test_unaligned_access_program();
         test_out_of_range_access_program();
-
         test_invalid_program();
 
-        // Future stage2 hooks. They stay inactive until the corresponding
-        // program vectors and CPU support are ready.
-        test_lu12i_program_when_enabled();
-        test_uart_e2e_program_when_enabled();
+        test_slt_program();
+        test_lu12i_program();
+        test_uart_e2e_program();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;
