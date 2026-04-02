@@ -60,9 +60,11 @@ inline uint32_t op_1ri20(uint32_t raw)   { return bits(raw, 31, 25); } // 1RI21-
 // ------------------------------
 constexpr uint32_t OP_ADD_W = 0b00000000000100000;
 constexpr uint32_t OP_SUB_W = 0b00000000000100010;
+constexpr uint32_t OP_SLT = 0b00000000000100100;
 constexpr uint32_t OP_AND = 0b00000000000101001;
 constexpr uint32_t OP_OR = 0b00000000000101010;
 constexpr uint32_t OP_XOR = 0b00000000000101011;
+
 
 constexpr uint32_t OP_ADDI_W = 0b0000001010;
 constexpr uint32_t OP_LD_W = 0b0010100010;
@@ -98,6 +100,13 @@ DecodedInst decode(uint32_t raw) {
         }
         if (op == OP_SUB_W) {
             d.op = Opcode::SUB_W;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.rk = get_rk(raw);
+            return d;
+        }
+        if (op == OP_SLT) {
+            d.op = Opcode::SLT;
             d.rd = get_rd(raw);
             d.rj = get_rj(raw);
             d.rk = get_rk(raw);
