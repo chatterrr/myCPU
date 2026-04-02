@@ -11,10 +11,13 @@ struct CPUState {
 };
 
 enum class Opcode {
-    ADD_W, SUB_W, ADDI_W,SLT,
-    AND, OR, XOR,
+    ADD_W, SUB_W, ADDI_W, SLT, SLTU,
+    SLL_W,SRL_W,SRA_W,
+    AND, OR, XOR, NOR,
+    SLTI,SLTUI,ANDI,ORI,XORI,
     LD_W, ST_W,
-    B, BEQ, BNE,LU12I_W,
+    SLLI_W,SRLI_W,SRAI_W,
+    B, BEQ, BNE, LU12I_W,
     INVALID
 };
 
