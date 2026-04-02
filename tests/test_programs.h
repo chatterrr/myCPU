@@ -49,78 +49,119 @@ namespace tests {
     inline constexpr uint64_t kMemProgramSteps = 4;
     inline constexpr uint64_t kBranchProgramSteps = 6;
     inline constexpr uint64_t kSmokeProgramSteps = 13;
+    inline constexpr uint64_t kR0WriteProtectProgramSteps = 2;
+    inline constexpr uint64_t kUnalignedAccessProgramSteps = 3;
+    inline constexpr uint64_t kOutOfRangeAccessProgramSteps = 3;
     inline constexpr uint64_t kInvalidProgramSteps = 1;
+
+    // ---------- future stage2 placeholders ----------
+    // These are reserved for the next wave of integration after member A
+    // finishes lu12i.w decode/execute and the large-address construction path.
+    inline constexpr bool kEnableLu12iIntegrationTest = false;
+    inline constexpr bool kEnableUartE2EIntegrationTest = false;
+    inline constexpr uint64_t kLu12iProgramSteps = 0;
+    inline constexpr uint64_t kUartProgramSteps = 0;
 
     // ---------- split programs ----------
     // 1) arithmetic
     inline const std::vector<uint32_t> kArithProgramWords = {
-        ENC_2RI12(OP_ADDI_W, 1, 0, 5),   // r1 = 5
-        ENC_2RI12(OP_ADDI_W, 2, 0, 7),   // r2 = 7
-        ENC_3R(OP_ADD_W,  4, 1, 2),   // r4 = 12
-        ENC_3R(OP_SUB_W,  5, 2, 1),   // r5 = 2
+        ENC_2RI12(OP_ADDI_W, 1, 0, 5),
+        ENC_2RI12(OP_ADDI_W, 2, 0, 7),
+        ENC_3R(OP_ADD_W, 4, 1, 2),
+        ENC_3R(OP_SUB_W, 5, 2, 1),
     };
 
     // 2) logic
     inline const std::vector<uint32_t> kLogicProgramWords = {
-        ENC_2RI12(OP_ADDI_W, 4, 0, 12),  // r4 = 12
-        ENC_2RI12(OP_ADDI_W, 5, 0,  2),  // r5 = 2
-        ENC_3R(OP_AND,   10, 4, 4),   // r10 = 12
-        ENC_3R(OP_OR,    11, 4, 5),   // r11 = 14
-        ENC_3R(OP_XOR,   12, 4, 5),   // r12 = 14
+        ENC_2RI12(OP_ADDI_W, 4, 0, 12),
+        ENC_2RI12(OP_ADDI_W, 5, 0,  2),
+        ENC_3R(OP_AND, 10, 4, 4),
+        ENC_3R(OP_OR,  11, 4, 5),
+        ENC_3R(OP_XOR, 12, 4, 5),
     };
 
     // 3) memory
     inline const std::vector<uint32_t> kMemProgramWords = {
-        ENC_2RI12(OP_ADDI_W, 4, 0, 12),    // r4 = 12
-        ENC_2RI12(OP_ADDI_W, 6, 0, 0x80),  // r6 = 0x80
-        ENC_2RI12(OP_ST_W,   4, 6, 0),     // MEM[0x80] = r4
-        ENC_2RI12(OP_LD_W,   7, 6, 0),     // r7 = MEM[0x80]
+        ENC_2RI12(OP_ADDI_W, 4, 0, 12),
+        ENC_2RI12(OP_ADDI_W, 6, 0, 0x80),
+        ENC_2RI12(OP_ST_W,   4, 6, 0),
+        ENC_2RI12(OP_LD_W,   7, 6, 0),
     };
 
     // 4) branch
     inline const std::vector<uint32_t> kBranchProgramWords = {
-        ENC_2RI12(OP_ADDI_W, 4,  0, 12),   // r4 = 12
-        ENC_2RI12(OP_ADDI_W, 7,  0, 12),   // r7 = 12
-        ENC_2RI12(OP_ADDI_W, 5,  0,  2),   // r5 = 2
+        ENC_2RI12(OP_ADDI_W, 4,  0, 12),
+        ENC_2RI12(OP_ADDI_W, 7,  0, 12),
+        ENC_2RI12(OP_ADDI_W, 5,  0,  2),
 
-        ENC_2RI16(OP_BEQ,    7,  4,  1),   // equal -> skip next
-        ENC_2RI12(OP_ADDI_W, 20, 0,  1),   // skipped
+        ENC_2RI16(OP_BEQ,    7,  4,  1),
+        ENC_2RI12(OP_ADDI_W, 20, 0,  1),
 
-        ENC_2RI16(OP_BNE,    5,  4,  1),   // not equal -> skip next
-        ENC_2RI12(OP_ADDI_W, 21, 0,  1),   // skipped
+        ENC_2RI16(OP_BNE,    5,  4,  1),
+        ENC_2RI12(OP_ADDI_W, 21, 0,  1),
 
-        ENC_I26(OP_B,             1),    // skip next
-        ENC_2RI12(OP_ADDI_W, 22, 0,  1),   // skipped
+        ENC_I26(OP_B, 1),
+        ENC_2RI12(OP_ADDI_W, 22, 0, 1),
     };
 
     // 5) smoke
     inline const std::vector<uint32_t> kSmokeProgramWords = {
-        ENC_2RI12(OP_ADDI_W, 1, 0,   5),   // r1 = 5
-        ENC_2RI12(OP_ADDI_W, 2, 0,   7),   // r2 = 7
-        ENC_3R(OP_ADD_W,  4, 1,   2),   // r4 = 12
-        ENC_3R(OP_SUB_W,  5, 2,   1),   // r5 = 2
+        ENC_2RI12(OP_ADDI_W, 1, 0,   5),
+        ENC_2RI12(OP_ADDI_W, 2, 0,   7),
+        ENC_3R(OP_ADD_W, 4, 1, 2),
+        ENC_3R(OP_SUB_W, 5, 2, 1),
 
-        ENC_2RI12(OP_ADDI_W, 6, 0, 0x80),  // r6 = 0x80
-        ENC_2RI12(OP_ST_W,   4, 6,   0),   // MEM[0x80] = r4
-        ENC_2RI12(OP_LD_W,   7, 6,   0),   // r7 = MEM[0x80]
+        ENC_2RI12(OP_ADDI_W, 6, 0, 0x80),
+        ENC_2RI12(OP_ST_W,   4, 6, 0),
+        ENC_2RI12(OP_LD_W,   7, 6, 0),
 
-        ENC_2RI16(OP_BEQ,    7, 4,   1),   // equal -> skip next
-        ENC_2RI12(OP_ADDI_W,20, 0,   1),   // skipped
+        ENC_2RI16(OP_BEQ,    7, 4, 1),
+        ENC_2RI12(OP_ADDI_W, 20, 0, 1),
 
-        ENC_2RI16(OP_BNE,    5, 4,   1),   // not equal -> skip next
-        ENC_2RI12(OP_ADDI_W,21, 0,   1),   // skipped
+        ENC_2RI16(OP_BNE,    5, 4, 1),
+        ENC_2RI12(OP_ADDI_W, 21, 0, 1),
 
-        ENC_I26(OP_B,         1),        // skip next
-        ENC_2RI12(OP_ADDI_W,22, 0,   1),   // skipped
+        ENC_I26(OP_B, 1),
+        ENC_2RI12(OP_ADDI_W, 22, 0, 1),
 
-        ENC_3R(OP_AND,   10, 4,   7),   // r10 = 12
-        ENC_3R(OP_OR,    11, 4,   5),   // r11 = 14
-        ENC_3R(OP_XOR,   12, 4,   5),   // r12 = 14
+        ENC_3R(OP_AND, 10, 4, 7),
+        ENC_3R(OP_OR,  11, 4, 5),
+        ENC_3R(OP_XOR, 12, 4, 5),
     };
 
-    // 6) invalid
+    // 6) r0 write-protect
+    inline const std::vector<uint32_t> kR0WriteProtectProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 0, 0, 123),  // try to write r0
+        ENC_2RI12(OP_ADDI_W, 1, 0,   5),  // r1 should still become 5
+    };
+
+    // 7) unaligned access
+    inline const std::vector<uint32_t> kUnalignedAccessProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 4, 0, 12),    // data
+        ENC_2RI12(OP_ADDI_W, 6, 0, 0x82),  // unaligned addr
+        ENC_2RI12(OP_ST_W,   4, 6, 0),     // should throw
+    };
+
+    // 8) out-of-range access
+    inline const std::vector<uint32_t> kOutOfRangeAccessProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 4, 0, 12),    // data
+        ENC_2RI12(OP_ADDI_W, 6, 0, -4),    // 0xFFFFFFFC, aligned but out of range
+        ENC_2RI12(OP_ST_W,   4, 6, 0),     // should throw
+    };
+
+    // 9) invalid
     inline const std::vector<uint32_t> kInvalidProgramWords = {
         0x00000000u
+    };
+
+    // 10) lu12i placeholder
+    // TODO(stage2): fill this after member A finalizes lu12i.w opcode/decode/execute.
+    inline const std::vector<uint32_t> kLu12iProgramWords = {
+    };
+
+    // 11) UART end-to-end placeholder
+    // TODO(stage2): fill this after large-address construction is available.
+    inline const std::vector<uint32_t> kUartProgramWords = {
     };
 
 }  // namespace tests
