@@ -20,6 +20,13 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         s.pc = pc0 + 4;
         break;
 
+    case Opcode::SLT:
+        int32_t lhs = static_cast<int32_t>(s.gpr[in.rj]);
+        int32_t rhs = static_cast<int32_t>(s.gpr[in.rk]);
+        s.gpr[in.rd] = (lhs < rhs) ? 1 : 0;
+        s.pc = pc0 + 4;
+        break;
+
     case Opcode::ADDI_W:
         s.gpr[in.rd] = s.gpr[in.rj] + (uint32_t)in.imm;
         s.pc = pc0 + 4;
@@ -70,6 +77,11 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
     case Opcode::BNE:
         if (s.gpr[in.rj] != s.gpr[in.rk]) s.pc = pc0 + 4 + (uint32_t)in.imm;
         else s.pc = pc0 + 4;
+        break;
+
+    case Opcode::LU12I_W:
+        s.gpr[in.rd] = (uint32_t)(in.imm<<12);
+        s.pc += 4;
         break;
 
     case Opcode::INVALID:

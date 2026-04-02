@@ -28,6 +28,10 @@ inline int32_t imm_i16(uint32_t raw) {
     // 2RI16-type: imm[15:0] 在 [25:10]
     return sext(bits(raw, 25, 10), 16);
 }
+inline int32_t si20(uint32_t raw) {
+    // 1RI20-type: imm[15:0] 在 [25:10]
+    return sext(bits(raw, 25, 5), 20);
+}
 inline int32_t imm_i21_branch(uint32_t raw) {
     // 1RI21-type: imm[15:0] 在 [25:10], imm[20:16] 在 [4:0]
     // 按分支偏移常见语义，最终字节偏移通常要 << 2
@@ -50,18 +54,23 @@ inline uint32_t op_2ri12(uint32_t raw)   { return bits(raw, 31, 22); } // 2RI12-
 inline uint32_t op_2ri16(uint32_t raw)   { return bits(raw, 31, 26); } // 2RI16-type
 inline uint32_t op_i26(uint32_t raw)     { return bits(raw, 31, 26); } // I26-type
 inline uint32_t op_1ri21(uint32_t raw)   { return bits(raw, 31, 26); } // 1RI21-type
+inline uint32_t op_1ri20(uint32_t raw)   { return bits(raw, 31, 25); } // 1RI21-type
 // ------------------------------
 //
 // ------------------------------
 constexpr uint32_t OP_ADD_W = 0b00000000000100000;
 constexpr uint32_t OP_SUB_W = 0b00000000000100010;
+constexpr uint32_t OP_SLT = 0b00000000000100100;
 constexpr uint32_t OP_AND = 0b00000000000101001;
 constexpr uint32_t OP_OR = 0b00000000000101010;
 constexpr uint32_t OP_XOR = 0b00000000000101011;
 
+
 constexpr uint32_t OP_ADDI_W = 0b0000001010;
 constexpr uint32_t OP_LD_W = 0b0010100010;
 constexpr uint32_t OP_ST_W = 0b0010100110;
+
+constexpr uint32_t OP_LU12I_W=0b0001010;
 
 constexpr uint32_t OP_BEQ = 0b010110;
 constexpr uint32_t OP_BNE = 0b010111;
@@ -91,6 +100,13 @@ DecodedInst decode(uint32_t raw) {
         }
         if (op == OP_SUB_W) {
             d.op = Opcode::SUB_W;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.rk = get_rk(raw);
+            return d;
+        }
+        if (op == OP_SLT) {
+            d.op = Opcode::SLT;
             d.rd = get_rd(raw);
             d.rj = get_rj(raw);
             d.rk = get_rk(raw);
@@ -178,6 +194,18 @@ DecodedInst decode(uint32_t raw) {
         if (op == OP_B) {
             d.op  = Opcode::B;
             d.imm = imm_i26_branch(raw);
+            return d;
+        }
+    }
+    // ----------------------------------------------------
+    // 5) 1RI20-type: lu20i.w
+    // opcode | si20[25:5]|rd
+    // ----------------------------------------------------
+    {
+        const uint32_t op = op_1ri20(raw);
+        if (op == OP_LU12I_W) {
+            d.op  = Opcode::LU12I_W;
+            d.imm = si20(raw);
             return d;
         }
     }
