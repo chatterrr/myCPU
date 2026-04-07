@@ -72,12 +72,23 @@ namespace {
     constexpr uint32_t OP_XORI = 0b0000001111;
     constexpr uint32_t OP_LD_W = 0b0010100010;
     constexpr uint32_t OP_ST_W = 0b0010100110;
+    constexpr uint32_t OP_LD_B = 0b0010100000;
+    constexpr uint32_t OP_ST_B = 0b0010100100;
+    constexpr uint32_t OP_LD_H = 0b0010100001;
+    constexpr uint32_t OP_ST_H = 0b0010100101;
 
     constexpr uint32_t OP_LU12I_W = 0b0001010;
+    constexpr uint32_t OP_PCADDU12I = 0b0001110;
 
     constexpr uint32_t OP_BEQ = 0b010110;
     constexpr uint32_t OP_BNE = 0b010111;
+    constexpr uint32_t OP_JIRL = 0b010011;
     constexpr uint32_t OP_B = 0b010100;
+    constexpr uint32_t OP_BLT = 0b011000;
+    constexpr uint32_t OP_BGE = 0b011001;
+    constexpr uint32_t OP_BL = 0b010101;
+    constexpr uint32_t OP_BLTU = 0b011010;
+    constexpr uint32_t OP_BGEU = 0b011011;
 
 }  // namespace
 
@@ -231,6 +242,34 @@ DecodedInst decode(uint32_t raw) {
             d.imm = imm_i12(raw);
             return d;
         }
+        if (op == OP_LD_B) {
+            d.op = Opcode::LD_B;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
+        if (op == OP_ST_B) {
+            d.op = Opcode::ST_B;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
+        if (op == OP_LD_H) {
+            d.op = Opcode::LD_H;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
+        if (op == OP_ST_H) {
+            d.op = Opcode::ST_H;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
         if (op == OP_ANDI) {
             d.op = Opcode::ANDI;
             d.rd = get_rd(raw);
@@ -271,6 +310,41 @@ DecodedInst decode(uint32_t raw) {
             d.imm = imm_i16(raw) << 2;
             return d;
         }
+        if (op == OP_BLT) {
+            d.op = Opcode::BLT;
+            d.rj = get_rj(raw);
+            d.rk = get_rd(raw);
+            d.imm = imm_i16(raw) << 2;
+            return d;
+        }
+        if (op == OP_BGE) {
+            d.op = Opcode::BGE;
+            d.rj = get_rj(raw);
+            d.rk = get_rd(raw);
+            d.imm = imm_i16(raw) << 2;
+            return d;
+        }
+        if (op == OP_BLTU) {
+            d.op = Opcode::BLTU;
+            d.rj = get_rj(raw);
+            d.rk = get_rd(raw);
+            d.imm = imm_i16(raw) << 2;
+            return d;
+        }
+        if (op == OP_BGEU) {
+            d.op = Opcode::BGEU;
+            d.rj = get_rj(raw);
+            d.rk = get_rd(raw);
+            d.imm = imm_i16(raw) << 2;
+            return d;
+        }
+        if (op == OP_JIRL) {
+            d.op = Opcode::JIRL;
+            d.rj = get_rj(raw);
+            d.rk = get_rd(raw);
+            d.imm = imm_i16(raw) << 2;
+            return d;
+        }
     }
 
     // 4) I26-type
@@ -281,13 +355,24 @@ DecodedInst decode(uint32_t raw) {
             d.imm = imm_i26_branch(raw);
             return d;
         }
+        if (op == OP_BL) {
+            d.op = Opcode::BL;
+            d.imm = imm_i26_branch(raw);
+            return d;
+        }
     }
 
-    // 5) 1RI20-type: lu12i.w
+    // 5) 1RI20-type
     {
         const uint32_t op = op_1ri20(raw);
         if (op == OP_LU12I_W) {
             d.op = Opcode::LU12I_W;
+            d.rd = get_rd(raw);
+            d.imm = si20(raw);
+            return d;
+        }
+        if (op == OP_PCADDU12I) {
+            d.op = Opcode::PCADDU12I;
             d.rd = get_rd(raw);
             d.imm = si20(raw);
             return d;

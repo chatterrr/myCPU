@@ -15,9 +15,11 @@ enum class Opcode {
     SLL_W,SRL_W,SRA_W,
     AND, OR, XOR, NOR,
     SLTI,SLTUI,ANDI,ORI,XORI,
-    LD_W, ST_W,
+    LD_W, ST_W, LD_B, LD_H, ST_B, ST_H,
+    LD_BU, LD_HU,
     SLLI_W,SRLI_W,SRAI_W,
-    B, BEQ, BNE, LU12I_W,
+    B, BEQ, BNE, LU12I_W, PCADDU12I,
+    BLT,BGE,BLTU,BGEU,BL,JIRL,
     INVALID
 };
 

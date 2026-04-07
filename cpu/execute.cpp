@@ -10,6 +10,10 @@ static void check_align4(uint32_t addr) {
     if (addr % 4 != 0) throw std::runtime_error("unaligned access");
 }
 
+static void check_align2(uint32_t addr) {
+    if (addr % 2 != 0) throw std::runtime_error("unaligned access");
+}
+
 void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
     uint32_t pc0 = s.pc;
 
@@ -167,8 +171,68 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         break;
     }
 
+    case Opcode::LD_B: {
+        uint32_t addr = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
+        s.gpr[in.rd] = mem.read8(addr);
+        s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::ST_B: {
+        uint32_t addr = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
+        uint32_t value = s.gpr[in.rd];
+
+        mem.write8(addr, value);
+        trace_note_mem_write(addr, value);
+
+        if (addr == config::UART_ADDR) {
+            trace_note_uart_char(static_cast<uint8_t>(value & 0xFFu));
+        }
+
+        s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::LD_H: {
+        uint32_t addr = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
+        check_align2(addr);
+        s.gpr[in.rd] = mem.read16(addr);
+        s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::ST_H: {
+        uint32_t addr = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
+        uint32_t value = s.gpr[in.rd];
+        check_align2(addr);
+
+        mem.write16(addr, value);
+        trace_note_mem_write(addr, value);
+
+        if (addr == config::UART_ADDR) {
+            trace_note_uart_char(static_cast<uint8_t>(value & 0xFFu));
+        }
+
+        s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::JIRL: {
+        trace_note_branch(true);
+        s.gpr[in.rk]=pc0 + 4;
+        s.pc = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
+        break;
+    }
+
     case Opcode::B: {
         trace_note_branch(true);
+        s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
+        break;
+    }
+
+    case Opcode::BL: {
+        trace_note_branch(true);
+        s.gpr[1]=pc0 + 4;
         s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
         break;
     }
@@ -189,8 +253,50 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         break;
     }
 
+    case Opcode::BLT: {
+        int32_t lhs = static_cast<int32_t>(s.gpr[in.rj]);
+        int32_t rhs = static_cast<int32_t>(s.gpr[in.rk]);
+        bool taken = (lhs < rhs);
+        trace_note_branch(taken);
+        if (taken) s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
+        else s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::BGE: {
+        int32_t lhs = static_cast<int32_t>(s.gpr[in.rj]);
+        int32_t rhs = static_cast<int32_t>(s.gpr[in.rk]);
+        bool taken = (lhs >= rhs);
+        trace_note_branch(taken);
+        if (taken) s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
+        else s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::BLTU: {
+        bool taken = (s.gpr[in.rj] < s.gpr[in.rk]);
+        trace_note_branch(taken);
+        if (taken) s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
+        else s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::BGEU: {
+        bool taken = (s.gpr[in.rj] >= s.gpr[in.rk]);
+        trace_note_branch(taken);
+        if (taken) s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
+        else s.pc = pc0 + 4;
+        break;
+    }
+
     case Opcode::LU12I_W: {
         s.gpr[in.rd] = static_cast<uint32_t>(in.imm) << 12;
+        s.pc = pc0 + 4;
+        break;
+    }
+
+    case Opcode::PCADDU12I: {
+        s.gpr[in.rd] = pc0 + (static_cast<uint32_t>(in.imm) << 12);
         s.pc = pc0 + 4;
         break;
     }
