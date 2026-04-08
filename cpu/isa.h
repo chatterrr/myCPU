@@ -20,6 +20,7 @@ enum class Opcode {
     SLLI_W,SRLI_W,SRAI_W,
     B, BEQ, BNE, LU12I_W, PCADDU12I,
     BLT,BGE,BLTU,BGEU,BL,JIRL,
+    BREAK,SYSCALL,
     INVALID
 };
 

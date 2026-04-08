@@ -64,6 +64,9 @@ namespace {
     constexpr uint32_t OP_SRLI_W = 0b00000000010001001;
     constexpr uint32_t OP_SRAI_W = 0b00000000010010001;
 
+    constexpr uint32_t OP_BREAK = 0b00000000001010100;
+    constexpr uint32_t OP_SYSCALL = 0b00000000001010110;
+
     constexpr uint32_t OP_SLTI = 0b0000001000;
     constexpr uint32_t OP_SLTUI = 0b0000001001;
     constexpr uint32_t OP_ADDI_W = 0b0000001010;
@@ -76,6 +79,8 @@ namespace {
     constexpr uint32_t OP_ST_B = 0b0010100100;
     constexpr uint32_t OP_LD_H = 0b0010100001;
     constexpr uint32_t OP_ST_H = 0b0010100101;
+    constexpr uint32_t OP_LD_BU = 0b0010101000;
+    constexpr uint32_t OP_LD_HU = 0b0010101001;
 
     constexpr uint32_t OP_LU12I_W = 0b0001010;
     constexpr uint32_t OP_PCADDU12I = 0b0001110;
@@ -202,6 +207,20 @@ DecodedInst decode(uint32_t raw) {
             d.imm = (int32_t)imm_ui5(raw);
             return d;
         }
+        if (op == OP_BREAK) {
+            d.op = Opcode::BREAK;
+            d.rd = 0;
+            d.rj = 0;
+            d.imm = 0;
+            return d;
+        }
+        if (op == OP_SYSCALL) {
+            d.op = Opcode::SYSCALL;
+            d.rd = 0;
+            d.rj = 0;
+            d.imm = 0;
+            return d;
+        }
     }
 
     // 2) 2RI12-type
@@ -258,6 +277,20 @@ DecodedInst decode(uint32_t raw) {
         }
         if (op == OP_LD_H) {
             d.op = Opcode::LD_H;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
+        if (op == OP_LD_BU) {
+            d.op = Opcode::LD_BU;
+            d.rd = get_rd(raw);
+            d.rj = get_rj(raw);
+            d.imm = imm_i12(raw);
+            return d;
+        }
+        if (op == OP_LD_HU) {
+            d.op = Opcode::LD_HU;
             d.rd = get_rd(raw);
             d.rj = get_rj(raw);
             d.imm = imm_i12(raw);
