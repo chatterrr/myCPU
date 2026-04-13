@@ -47,12 +47,6 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         break;
     }
 
-    case Opcode::ADDI_W: {
-        s.gpr[in.rd] = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
-        s.pc = pc0 + 4;
-        break;
-    }
-
     case Opcode::AND: {
         s.gpr[in.rd] = s.gpr[in.rj] & s.gpr[in.rk];
         s.pc = pc0 + 4;
@@ -239,7 +233,7 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
 
     case Opcode::JIRL: {
         trace_note_branch(true);
-        s.gpr[in.rk]=pc0 + 4;
+        s.gpr[in.rk] = pc0 + 4;
         s.pc = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
         break;
     }
@@ -252,7 +246,7 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
 
     case Opcode::BL: {
         trace_note_branch(true);
-        s.gpr[1]=pc0 + 4;
+        s.gpr[1] = pc0 + 4;
         s.pc = pc0 + 4 + static_cast<uint32_t>(in.imm);
         break;
     }
@@ -333,27 +327,27 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         uint32_t syscall_num = s.gpr[11];
         switch (syscall_num) {
             // ------------- 1. 退出程序 (exit) ----------------
-            case 93: {  // Linux LoongArch 标准 exit 号 = 93
-                int32_t exit_code = s.gpr[4];  // 退出码在 r4
-                //trace_note_syscall("exit", exit_code);
-                throw std::runtime_error("Program exited with code: " + std::to_string(exit_code));
+        case 93: {  // Linux LoongArch 标准 exit 号 = 93
+            int32_t exit_code = s.gpr[4];  // 退出码在 r4
+            //trace_note_syscall("exit", exit_code);
+            throw std::runtime_error("Program exited with code: " + std::to_string(exit_code));
+        }
+               // ------------- 2. 打印单个字符 (print char) ----------------
+        case 64: {  // write
+            uint32_t fd = s.gpr[4];
+            uint32_t buf_addr = s.gpr[5];
+            // 读取一个字节（打印字符）
+            uint8_t ch = mem.read8(buf_addr);
+            if (fd == 1 || fd == 2) {  // stdout/stderr
+                std::cout << ch;
+                std::cout.flush();
             }
-            // ------------- 2. 打印单个字符 (print char) ----------------
-            case 64: {  // write
-                uint32_t fd = s.gpr[4];
-                uint32_t buf_addr = s.gpr[5];
-                // 读取一个字节（打印字符）
-                uint8_t ch = mem.read8(buf_addr);
-                if (fd == 1 || fd == 2) {  // stdout/stderr
-                    std::cout << ch;
-                    std::cout.flush();
-                }
-                break;
-            }
-            // ------------- 未知系统调用 ----------------
-            default:
-                throw std::runtime_error(
-                    "Unsupported syscall: " + std::to_string(syscall_num));
+            break;
+        }
+               // ------------- 未知系统调用 ----------------
+        default:
+            throw std::runtime_error(
+                "Unsupported syscall: " + std::to_string(syscall_num));
         }
         s.pc = pc0 + 4;
         break;
@@ -362,5 +356,6 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
     case Opcode::INVALID:
     default:
         throw std::runtime_error("invalid instruction");
+    }
     }
 }

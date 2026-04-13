@@ -47,47 +47,34 @@ script = "Write-Host \"[cleanup] no cleanup needed\""
 [[actions]]
 name = "check-env"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-& .\tools\check_env.ps1
-'''
+command = "& .\\tools\\check_env.ps1"
 
 [[actions]]
 name = "enter-vsdev"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-& .\tools\enter_vsdev.ps1
-'''
+command = "& .\\tools\\enter_vsdev.ps1"
 
 [[actions]]
 name = "build-release"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-& .\tools\enter_vsdev.ps1 'cmake --build .\build --config Release'
-'''
+command = "& .\\tools\\enter_vsdev.ps1 'cmake --build .\\build --config Release'"
 
 [[actions]]
 name = "ctest-release"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-& .\tools\enter_vsdev.ps1 'ctest -C Release --output-on-failure --test-dir .\build'
-'''
+command = "& .\\tools\\enter_vsdev.ps1 'ctest -C Release --output-on-failure --test-dir .\\build'"
 
 [[actions]]
 name = "trace-smoke"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-.\build\Release\mycpu.exe --use-program smoke --max-steps 13 --trace .\build\smoke.jsonl
-'''
+command = ".\\build\\Release\\mycpu.exe --use-program smoke --max-steps 13 --trace .\\build\\smoke.jsonl"
 
 [[actions]]
 name = "trace-uart"
 icon = "tool"
-command = '''
-Set-Location $env:CODEX_WORKTREE_PATH
-.\build\Release\mycpu.exe --use-program uart --max-steps 8 --trace .\build\uart.jsonl
-'''
+command = ".\\build\\Release\\mycpu.exe --use-program uart --max-steps 8 --trace .\\build\\uart.jsonl"
+
+[[actions]]
+name = "configure-release"
+icon = "tool"
+command = "& .\\tools\\enter_vsdev.ps1 'cmake -S . -B .\\build -G \"Visual Studio 18 2026\" -A x64'"
