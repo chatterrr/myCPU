@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (MSVC)
-    add_compile_options(/utf-8 /W4 /permissive-)
+    add_compile_options(/utf-8 /W4 /permissive- /EHsc)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

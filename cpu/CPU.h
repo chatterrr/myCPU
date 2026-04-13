@@ -14,6 +14,10 @@ public:
     const CPUState& state() const;
 
 private:
+    void reset_pipeline();
+    void advance_pipeline_skeleton(uint32_t fetched_pc, uint32_t fetched_raw);
+
     Memory& mem_;
     CPUState state_;
+    PipelineState pipeline_;
 };
