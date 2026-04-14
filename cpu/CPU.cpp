@@ -86,14 +86,61 @@ namespace {
         return false;
     }
 
-    uint32_t pipeline_execute_alu(const PipelineIDEX& stage) {
+    bool pipeline_can_forward_alu_result(const DecodedInst& inst) {
+        switch (inst.op) {
+        case Opcode::ADD_W:
+        case Opcode::SUB_W:
+        case Opcode::ADDI_W:
+            return inst.rd != 0;
+        default:
+            return false;
+        }
+    }
+
+    uint32_t pipeline_forward_operand(
+        uint32_t reg_index,
+        uint32_t latched_value,
+        const PipelineEXMEM& ex_mem,
+        const PipelineMEMWB& mem_wb
+    ) {
+        if (reg_index == 0) {
+            return 0;
+        }
+
+        if (ex_mem.valid
+            && pipeline_can_forward_alu_result(ex_mem.inst)
+            && ex_mem.inst.rd == reg_index) {
+            return ex_mem.alu_result;
+        }
+
+        if (mem_wb.valid
+            && pipeline_can_forward_alu_result(mem_wb.inst)
+            && mem_wb.inst.rd == reg_index) {
+            return mem_wb.write_value;
+        }
+
+        return latched_value;
+    }
+
+    uint32_t pipeline_execute_alu(
+        const PipelineIDEX& stage,
+        const PipelineEXMEM& ex_mem,
+        const PipelineMEMWB& mem_wb
+    ) {
+        const uint32_t src1_value = pipeline_reads_rj(stage.inst)
+            ? pipeline_forward_operand(stage.inst.rj, stage.src1_value, ex_mem, mem_wb)
+            : stage.src1_value;
+        const uint32_t src2_value = pipeline_reads_rk(stage.inst)
+            ? pipeline_forward_operand(stage.inst.rk, stage.src2_value, ex_mem, mem_wb)
+            : stage.src2_value;
+
         switch (stage.inst.op) {
         case Opcode::ADD_W:
-            return stage.src1_value + stage.src2_value;
+            return src1_value + src2_value;
         case Opcode::SUB_W:
-            return stage.src1_value - stage.src2_value;
+            return src1_value - src2_value;
         case Opcode::ADDI_W:
-            return stage.src1_value + static_cast<uint32_t>(stage.inst.imm);
+            return src1_value + static_cast<uint32_t>(stage.inst.imm);
         default:
             throw std::runtime_error("unsupported instruction reached pipeline EX stage");
         }
@@ -230,7 +277,11 @@ void CPU::step_pipeline_mode() {
         next.ex_mem.valid = true;
         next.ex_mem.pc = pipeline_.id_ex.pc;
         next.ex_mem.inst = pipeline_.id_ex.inst;
-        next.ex_mem.alu_result = pipeline_execute_alu(pipeline_.id_ex);
+        next.ex_mem.alu_result = pipeline_execute_alu(
+            pipeline_.id_ex,
+            pipeline_.ex_mem,
+            pipeline_.mem_wb
+        );
     }
 
     bool stall_for_raw_hazard = false;
@@ -252,9 +303,15 @@ void CPU::step_pipeline_mode() {
             throw std::runtime_error(buf);
         }
 
+        // Keep the M3 stall path only for producer values that are not available
+        // through the minimal EX/MEM or MEM/WB ALU forwarding path.
         stall_for_raw_hazard =
-            (pipeline_.id_ex.valid && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst))
-            || (pipeline_.ex_mem.valid && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst));
+            (pipeline_.id_ex.valid
+                && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst)
+                && !pipeline_can_forward_alu_result(pipeline_.id_ex.inst))
+            || (pipeline_.ex_mem.valid
+                && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst)
+                && !pipeline_can_forward_alu_result(pipeline_.ex_mem.inst));
 
         if (!stall_for_raw_hazard) {
             next.id_ex.valid = true;

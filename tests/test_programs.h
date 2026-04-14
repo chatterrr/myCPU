@@ -67,7 +67,8 @@ namespace tests {
     inline constexpr uint64_t kLu12iProgramSteps = 3;
     inline constexpr uint64_t kUartProgramSteps = 8;
     inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
-    inline constexpr uint64_t kPipelineRawHazardProgramSteps = 11;
+    inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
+    inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -207,6 +208,18 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 1, 0, 5),  // r1 = 5
         ENC_2RI12(OP_ADDI_W, 2, 1, 7),  // r2 = r1 + 7 = 12
         ENC_3R(OP_ADD_W, 4, 2, 1),      // r4 = r2 + r1 = 17
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+    };
+
+    // 15) pipeline forwarding demo:
+    // I3 needs EX/MEM(r2) + MEM/WB(r1), then I4 chains again from I3/I2.
+    inline const std::vector<uint32_t> kPipelineForwardingProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, 5),  // r1 = 5
+        ENC_2RI12(OP_ADDI_W, 2, 1, 7),  // r2 = r1 + 7 = 12
+        ENC_3R(OP_ADD_W, 4, 2, 1),      // r4 = r2 + r1 = 17
+        ENC_3R(OP_SUB_W, 5, 4, 2),      // r5 = r4 - r2 = 5
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
