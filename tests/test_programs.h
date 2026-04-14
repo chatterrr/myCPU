@@ -69,6 +69,7 @@ namespace tests {
     inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
     inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
     inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
+    inline constexpr uint64_t kPipelineLoadUseProgramSteps = 8;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -222,6 +223,20 @@ namespace tests {
         ENC_3R(OP_SUB_W, 5, 4, 2),      // r5 = r4 - r2 = 5
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+    };
+
+    inline constexpr uint32_t kPipelineLoadUseDataWord =
+        ENC_2RI12(OP_ADDI_W, 0, 0, 5);
+
+    // 16) pipeline load-use demo:
+    // I2 immediately consumes the loaded word from I1 and needs one stall/bubble.
+    inline const std::vector<uint32_t> kPipelineLoadUseProgramWords = {
+        ENC_2RI12(OP_LD_W,   1, 0, 16), // r1 = MEM[0x10] -> embedded data word below
+        ENC_2RI12(OP_ADDI_W, 2, 1,  1), // r2 = r1 + 1 (load-use hazard)
+        ENC_3R(OP_ADD_W, 4, 2, 1),      // r4 = r2 + r1
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // spacer / harmless
+        kPipelineLoadUseDataWord,       // data word, also executes as a harmless rd=0 ADDI
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
     };
 

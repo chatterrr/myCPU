@@ -29,6 +29,7 @@ namespace {
         case Opcode::ADD_W:
         case Opcode::SUB_W:
         case Opcode::ADDI_W:
+        case Opcode::LD_W:
             return true;
         default:
             return false;
@@ -40,6 +41,7 @@ namespace {
         case Opcode::ADD_W:
         case Opcode::SUB_W:
         case Opcode::ADDI_W:
+        case Opcode::LD_W:
             return inst.rd != 0;
         default:
             return false;
@@ -51,6 +53,7 @@ namespace {
         case Opcode::ADD_W:
         case Opcode::SUB_W:
         case Opcode::ADDI_W:
+        case Opcode::LD_W:
             return true;
         default:
             return false;
@@ -86,7 +89,7 @@ namespace {
         return false;
     }
 
-    bool pipeline_can_forward_alu_result(const DecodedInst& inst) {
+    bool pipeline_can_forward_ex_mem_result(const DecodedInst& inst) {
         switch (inst.op) {
         case Opcode::ADD_W:
         case Opcode::SUB_W:
@@ -95,6 +98,10 @@ namespace {
         default:
             return false;
         }
+    }
+
+    bool pipeline_can_forward_mem_wb_result(const DecodedInst& inst) {
+        return pipeline_writes_back(inst);
     }
 
     uint32_t pipeline_forward_operand(
@@ -108,13 +115,13 @@ namespace {
         }
 
         if (ex_mem.valid
-            && pipeline_can_forward_alu_result(ex_mem.inst)
+            && pipeline_can_forward_ex_mem_result(ex_mem.inst)
             && ex_mem.inst.rd == reg_index) {
             return ex_mem.alu_result;
         }
 
         if (mem_wb.valid
-            && pipeline_can_forward_alu_result(mem_wb.inst)
+            && pipeline_can_forward_mem_wb_result(mem_wb.inst)
             && mem_wb.inst.rd == reg_index) {
             return mem_wb.write_value;
         }
@@ -140,6 +147,8 @@ namespace {
         case Opcode::SUB_W:
             return src1_value - src2_value;
         case Opcode::ADDI_W:
+            return src1_value + static_cast<uint32_t>(stage.inst.imm);
+        case Opcode::LD_W:
             return src1_value + static_cast<uint32_t>(stage.inst.imm);
         default:
             throw std::runtime_error("unsupported instruction reached pipeline EX stage");
@@ -186,7 +195,12 @@ void CPU::advance_pipeline_skeleton(uint32_t fetched_pc, uint32_t fetched_raw) {
         next.mem_wb.valid = true;
         next.mem_wb.pc = pipeline_.ex_mem.pc;
         next.mem_wb.inst = pipeline_.ex_mem.inst;
-        next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+        if (pipeline_.ex_mem.inst.op == Opcode::LD_W) {
+            next.mem_wb.write_value = mem_.read32(pipeline_.ex_mem.alu_result);
+        }
+        else {
+            next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+        }
     }
 
     if (pipeline_.id_ex.valid) {
@@ -270,7 +284,12 @@ void CPU::step_pipeline_mode() {
         next.mem_wb.valid = true;
         next.mem_wb.pc = pipeline_.ex_mem.pc;
         next.mem_wb.inst = pipeline_.ex_mem.inst;
-        next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+        if (pipeline_.ex_mem.inst.op == Opcode::LD_W) {
+            next.mem_wb.write_value = mem_.read32(pipeline_.ex_mem.alu_result);
+        }
+        else {
+            next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+        }
     }
 
     if (pipeline_.id_ex.valid) {
@@ -296,22 +315,23 @@ void CPU::step_pipeline_mode() {
             std::snprintf(
                 buf,
                 sizeof(buf),
-                "pipeline mode currently supports only ADD_W/SUB_W/ADDI_W, got %s at pc=0x%08X",
+                "pipeline mode currently supports only ADD_W/SUB_W/ADDI_W/LD_W, got %s at pc=0x%08X",
                 opcode_to_string(decoded.op),
                 pipeline_.if_id.pc
             );
             throw std::runtime_error(buf);
         }
 
-        // Keep the M3 stall path only for producer values that are not available
-        // through the minimal EX/MEM or MEM/WB ALU forwarding path.
+        // Stall only when the producer will still not have a usable value for the
+        // consumer's next EX stage. The current load-use case needs one bubble:
+        // EX computes the address first, then MEM/WB provides the loaded word.
         stall_for_raw_hazard =
             (pipeline_.id_ex.valid
                 && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst)
-                && !pipeline_can_forward_alu_result(pipeline_.id_ex.inst))
+                && !pipeline_can_forward_ex_mem_result(pipeline_.id_ex.inst))
             || (pipeline_.ex_mem.valid
                 && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst)
-                && !pipeline_can_forward_alu_result(pipeline_.ex_mem.inst));
+                && !pipeline_can_forward_mem_wb_result(pipeline_.ex_mem.inst));
 
         if (!stall_for_raw_hazard) {
             next.id_ex.valid = true;

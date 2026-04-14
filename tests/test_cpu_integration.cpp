@@ -25,9 +25,13 @@ namespace {
         ProgramContext() : mem(config::MEM_SIZE), cpu(mem) {}
     };
 
-    void load_and_reset(ProgramContext& ctx, const std::vector<uint32_t>& words) {
-        Loader::load_program_words(ctx.mem, config::PROGRAM_BASE, words);
-        ctx.cpu.reset(config::PROGRAM_BASE);
+    void load_and_reset(
+        ProgramContext& ctx,
+        const std::vector<uint32_t>& words,
+        uint32_t base = config::PROGRAM_BASE
+    ) {
+        Loader::load_program_words(ctx.mem, base, words);
+        ctx.cpu.reset(base);
     }
 
     void test_arith_program() {
@@ -235,6 +239,20 @@ namespace {
         expect(s.gpr[5] == 5, "pipeline-fwd: r5 should be 5");
     }
 
+    void test_pipeline_load_use_program() {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(true);
+        load_and_reset(ctx, tests::kPipelineLoadUseProgramWords, 0);
+        ctx.cpu.run(tests::kPipelineLoadUseProgramSteps);
+
+        const uint32_t loaded_word = tests::kPipelineLoadUseDataWord;
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[0] == 0, "pipeline-loaduse: r0 must stay zero");
+        expect(s.gpr[1] == loaded_word, "pipeline-loaduse: r1 should match the embedded data word");
+        expect(s.gpr[2] == loaded_word + 1u, "pipeline-loaduse: r2 should consume the loaded value");
+        expect(s.gpr[4] == loaded_word + loaded_word + 1u, "pipeline-loaduse: r4 should reflect the chained dependency");
+    }
+
 }  // namespace
 
 int main() {
@@ -256,6 +274,7 @@ int main() {
         test_pipeline_no_hazard_program();
         test_pipeline_raw_hazard_program();
         test_pipeline_forwarding_program();
+        test_pipeline_load_use_program();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;
