@@ -30,6 +30,13 @@ namespace {
         case Opcode::SUB_W:
         case Opcode::ADDI_W:
         case Opcode::LD_W:
+        case Opcode::B:
+        case Opcode::BEQ:
+        case Opcode::BNE:
+        case Opcode::BLT:
+        case Opcode::BGE:
+        case Opcode::BLTU:
+        case Opcode::BGEU:
             return true;
         default:
             return false;
@@ -54,6 +61,12 @@ namespace {
         case Opcode::SUB_W:
         case Opcode::ADDI_W:
         case Opcode::LD_W:
+        case Opcode::BEQ:
+        case Opcode::BNE:
+        case Opcode::BLT:
+        case Opcode::BGE:
+        case Opcode::BLTU:
+        case Opcode::BGEU:
             return true;
         default:
             return false;
@@ -64,6 +77,12 @@ namespace {
         switch (inst.op) {
         case Opcode::ADD_W:
         case Opcode::SUB_W:
+        case Opcode::BEQ:
+        case Opcode::BNE:
+        case Opcode::BLT:
+        case Opcode::BGE:
+        case Opcode::BLTU:
+        case Opcode::BGEU:
             return true;
         default:
             return false;
@@ -129,11 +148,18 @@ namespace {
         return latched_value;
     }
 
-    uint32_t pipeline_execute_alu(
+    struct PipelineExecuteResult {
+        uint32_t alu_result = 0;
+        bool branch_taken = false;
+        uint32_t branch_target = 0;
+    };
+
+    PipelineExecuteResult pipeline_execute_stage(
         const PipelineIDEX& stage,
         const PipelineEXMEM& ex_mem,
         const PipelineMEMWB& mem_wb
     ) {
+        PipelineExecuteResult result{};
         const uint32_t src1_value = pipeline_reads_rj(stage.inst)
             ? pipeline_forward_operand(stage.inst.rj, stage.src1_value, ex_mem, mem_wb)
             : stage.src1_value;
@@ -143,13 +169,51 @@ namespace {
 
         switch (stage.inst.op) {
         case Opcode::ADD_W:
-            return src1_value + src2_value;
+            result.alu_result = src1_value + src2_value;
+            return result;
         case Opcode::SUB_W:
-            return src1_value - src2_value;
+            result.alu_result = src1_value - src2_value;
+            return result;
         case Opcode::ADDI_W:
-            return src1_value + static_cast<uint32_t>(stage.inst.imm);
+            result.alu_result = src1_value + static_cast<uint32_t>(stage.inst.imm);
+            return result;
         case Opcode::LD_W:
-            return src1_value + static_cast<uint32_t>(stage.inst.imm);
+            result.alu_result = src1_value + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        case Opcode::B:
+            result.branch_taken = true;
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        case Opcode::BEQ:
+            result.branch_taken = (src1_value == src2_value);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        case Opcode::BNE:
+            result.branch_taken = (src1_value != src2_value);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        case Opcode::BLT: {
+            const int32_t lhs = static_cast<int32_t>(src1_value);
+            const int32_t rhs = static_cast<int32_t>(src2_value);
+            result.branch_taken = (lhs < rhs);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        }
+        case Opcode::BGE: {
+            const int32_t lhs = static_cast<int32_t>(src1_value);
+            const int32_t rhs = static_cast<int32_t>(src2_value);
+            result.branch_taken = (lhs >= rhs);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        }
+        case Opcode::BLTU:
+            result.branch_taken = (src1_value < src2_value);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
+        case Opcode::BGEU:
+            result.branch_taken = (src1_value >= src2_value);
+            result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
+            return result;
         default:
             throw std::runtime_error("unsupported instruction reached pipeline EX stage");
         }
@@ -292,20 +356,26 @@ void CPU::step_pipeline_mode() {
         }
     }
 
+    bool flush_for_control_hazard = false;
+    uint32_t control_target_pc = state_.pc;
+
     if (pipeline_.id_ex.valid) {
         next.ex_mem.valid = true;
         next.ex_mem.pc = pipeline_.id_ex.pc;
         next.ex_mem.inst = pipeline_.id_ex.inst;
-        next.ex_mem.alu_result = pipeline_execute_alu(
+        const PipelineExecuteResult ex_result = pipeline_execute_stage(
             pipeline_.id_ex,
             pipeline_.ex_mem,
             pipeline_.mem_wb
         );
+        next.ex_mem.alu_result = ex_result.alu_result;
+        flush_for_control_hazard = ex_result.branch_taken;
+        control_target_pc = ex_result.branch_target;
     }
 
     bool stall_for_raw_hazard = false;
 
-    if (pipeline_.if_id.valid) {
+    if (!flush_for_control_hazard && pipeline_.if_id.valid) {
         DecodedInst decoded = decode(pipeline_.if_id.raw);
         if (decoded.op == Opcode::INVALID) {
             throw make_invalid_instruction_error(pipeline_.if_id.pc, pipeline_.if_id.raw);
@@ -315,7 +385,7 @@ void CPU::step_pipeline_mode() {
             std::snprintf(
                 buf,
                 sizeof(buf),
-                "pipeline mode currently supports only ADD_W/SUB_W/ADDI_W/LD_W, got %s at pc=0x%08X",
+                "pipeline mode currently supports ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU, got %s at pc=0x%08X",
                 opcode_to_string(decoded.op),
                 pipeline_.if_id.pc
             );
@@ -342,7 +412,11 @@ void CPU::step_pipeline_mode() {
         }
     }
 
-    if (stall_for_raw_hazard) {
+    if (flush_for_control_hazard) {
+        // Resolve control flow in EX and conservatively bubble the younger stages.
+        state_.pc = control_target_pc;
+    }
+    else if (stall_for_raw_hazard) {
         next.if_id = pipeline_.if_id;
     }
     else {

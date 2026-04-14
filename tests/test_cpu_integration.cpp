@@ -253,6 +253,23 @@ namespace {
         expect(s.gpr[4] == loaded_word + loaded_word + 1u, "pipeline-loaduse: r4 should reflect the chained dependency");
     }
 
+    void test_pipeline_branch_program() {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(true);
+        load_and_reset(ctx, tests::kPipelineBranchProgramWords);
+        ctx.cpu.run(tests::kPipelineBranchProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[0] == 0, "pipeline-branch: r0 must stay zero");
+        expect(s.gpr[1] == 5, "pipeline-branch: r1 should be 5");
+        expect(s.gpr[2] == 5, "pipeline-branch: r2 should be 5");
+        expect(s.gpr[4] == 12, "pipeline-branch: r4 should be 12");
+        expect(s.gpr[5] == 17, "pipeline-branch: r5 should be 17");
+        expect(s.gpr[20] == 0, "pipeline-branch: r20 should remain 0 after flush");
+        expect(s.gpr[21] == 0, "pipeline-branch: r21 should remain 0 after flush");
+        expect(s.gpr[22] == 0, "pipeline-branch: r22 should remain 0 after flush");
+    }
+
 }  // namespace
 
 int main() {
@@ -275,6 +292,7 @@ int main() {
         test_pipeline_raw_hazard_program();
         test_pipeline_forwarding_program();
         test_pipeline_load_use_program();
+        test_pipeline_branch_program();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;

@@ -66,10 +66,11 @@ namespace tests {
     inline constexpr uint64_t kSltProgramSteps = 6;
     inline constexpr uint64_t kLu12iProgramSteps = 3;
     inline constexpr uint64_t kUartProgramSteps = 8;
-    inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
-    inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
-    inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
-    inline constexpr uint64_t kPipelineLoadUseProgramSteps = 8;
+inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
+inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
+inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
+inline constexpr uint64_t kPipelineLoadUseProgramSteps = 8;
+inline constexpr uint64_t kPipelineBranchProgramSteps = 14;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -237,6 +238,26 @@ namespace tests {
         ENC_3R(OP_ADD_W, 4, 2, 1),      // r4 = r2 + r1
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // spacer / harmless
         kPipelineLoadUseDataWord,       // data word, also executes as a harmless rd=0 ADDI
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+    };
+
+    // 17) pipeline branch/control hazard demo:
+    // I3 resolves a taken BEQ using forwarded operands and must flush two younger writes.
+    // I7 then does the same for an unconditional B.
+    inline const std::vector<uint32_t> kPipelineBranchProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, 5),  // r1 = 5
+        ENC_2RI12(OP_ADDI_W, 2, 1, 0),  // r2 = r1 (needs forwarding into the branch)
+        ENC_2RI16(OP_BEQ,    2, 1, 2),  // taken: skip the next two wrong-path writes
+        ENC_2RI12(OP_ADDI_W, 20, 0, 1), // wrong path, must be flushed
+        ENC_2RI12(OP_ADDI_W, 21, 0, 1), // wrong path, must be flushed
+        ENC_2RI12(OP_ADDI_W, 4, 2, 7),  // r4 = r2 + 7 = 12
+        ENC_I26(OP_B, 1),               // taken: skip the next wrong-path write
+        ENC_2RI12(OP_ADDI_W, 22, 0, 1), // wrong path, must be flushed
+        ENC_3R(OP_ADD_W, 5, 4, 1),      // r5 = r4 + r1 = 17
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
     };
 
