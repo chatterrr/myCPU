@@ -194,6 +194,20 @@ namespace {
         expect(capture.str() == "Hi!", "uart-e2e: UART output should be Hi!");
     }
 
+    void test_pipeline_no_hazard_program() {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(true);
+        load_and_reset(ctx, tests::kPipelineNoHazardProgramWords);
+        ctx.cpu.run(tests::kPipelineNoHazardProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[0] == 0, "pipeline-nohaz: r0 must stay zero");
+        expect(s.gpr[1] == 5, "pipeline-nohaz: r1 should be 5");
+        expect(s.gpr[2] == 7, "pipeline-nohaz: r2 should be 7");
+        expect(s.gpr[4] == 12, "pipeline-nohaz: r4 should be 12");
+        expect(s.gpr[5] == 7, "pipeline-nohaz: r5 should be 7");
+    }
+
 }  // namespace
 
 int main() {
@@ -212,6 +226,7 @@ int main() {
         test_slt_program();
         test_lu12i_program();
         test_uart_e2e_program();
+        test_pipeline_no_hazard_program();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;

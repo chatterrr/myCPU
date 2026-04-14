@@ -47,6 +47,8 @@ struct PipelineIDEX {
     bool valid = false;
     uint32_t pc = 0;
     DecodedInst inst = make_invalid_decoded_inst();
+    uint32_t src1_value = 0;
+    uint32_t src2_value = 0;
 };
 
 struct PipelineEXMEM {

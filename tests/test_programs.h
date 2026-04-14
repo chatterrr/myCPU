@@ -66,6 +66,7 @@ namespace tests {
     inline constexpr uint64_t kSltProgramSteps = 6;
     inline constexpr uint64_t kLu12iProgramSteps = 3;
     inline constexpr uint64_t kUartProgramSteps = 8;
+    inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -180,6 +181,24 @@ namespace tests {
 
         ENC_2RI12(OP_ADDI_W, 16, 0, '!'),
         ENC_2RI12(OP_ST_W,   16, 15, 0),
+    };
+
+    // 13) minimal no-hazard pipeline demo
+    inline const std::vector<uint32_t> kPipelineNoHazardProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, 5),  // r1 = 5
+        ENC_2RI12(OP_ADDI_W, 2, 0, 7),  // r2 = 7
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_3R(OP_ADD_W, 4, 1, 2),      // r4 = 12
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
+        ENC_3R(OP_SUB_W, 5, 4, 1),      // r5 = 7
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
     };
 
 }  // namespace tests

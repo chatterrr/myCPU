@@ -61,22 +61,24 @@ namespace {
         if (name == "slt") return tests::kSltProgramWords;
         if (name == "lu12i") return tests::kLu12iProgramWords;
         if (name == "uart") return tests::kUartProgramWords;
+        if (name == "pipeline-nohaz") return tests::kPipelineNoHazardProgramWords;
 
         throw std::runtime_error(
             "Unknown built-in program: " + name +
-            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart");
+            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz");
     }
 
     void print_usage(const char* argv0) {
         std::cout
             << "Usage:\n"
-            << "  " << argv0 << " --bin <program.bin> [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n"
-            << "  " << argv0 << " --use-program <name> [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n"
-            << "  " << argv0 << " --use-smoke [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n\n"
+            << "  " << argv0 << " [--pipeline] --bin <program.bin> [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n"
+            << "  " << argv0 << " [--pipeline] --use-program <name> [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n"
+            << "  " << argv0 << " [--pipeline] --use-smoke [--base <addr>] [--entry <addr>] [--max-steps N] [--dump-regs] [--trace <trace.jsonl>]\n\n"
             << "Options:\n"
             << "  --bin <path>         Load program from a raw binary file.\n"
             << "  --use-program <name> Load a built-in program from tests/test_programs.h.\n"
             << "  --use-smoke          Alias of --use-program smoke.\n"
+            << "  --pipeline           Run in minimal 5-stage pipeline mode.\n"
             << "  --base <addr>        Load address, supports decimal or hex.\n"
             << "  --entry <addr>       Initial PC, supports decimal or hex.\n"
             << "  --max-steps <N>      Maximum number of instructions to run.\n"
@@ -84,7 +86,7 @@ namespace {
             << "  --trace <path>       Write JSONL execution trace for visualization.\n"
             << "  -h, --help           Show this help message.\n\n"
             << "Built-in programs:\n"
-            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart\n\n"
+            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz\n\n"
             << "Notes:\n"
             << "  Exactly one of --bin, --use-program, or --use-smoke must be provided.\n"
             << "  If --entry is not given, it defaults to the load base address.\n";
@@ -99,6 +101,7 @@ int main(int argc, char* argv[]) {
         bool use_smoke = false;
         bool dump_regs_on_exit = false;
         bool entry_explicit = false;
+        bool pipeline_mode = false;
 
         std::string bin_path;
         std::string builtin_program_name;
@@ -119,6 +122,9 @@ int main(int argc, char* argv[]) {
             }
             else if (arg == "--use-smoke") {
                 use_smoke = true;
+            }
+            else if (arg == "--pipeline") {
+                pipeline_mode = true;
             }
             else if (arg == "--max-steps" && i + 1 < argc) {
                 max_steps = parse_u64_arg(argv[++i], "--max-steps");
@@ -190,6 +196,7 @@ int main(int argc, char* argv[]) {
         }
 
         CPU cpu(mem);
+        cpu.set_pipeline_mode(pipeline_mode);
         cpu.reset(entry_pc);
 
         cpu.run(max_steps);
