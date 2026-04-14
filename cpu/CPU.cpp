@@ -123,6 +123,21 @@ namespace {
         return pipeline_writes_back(inst);
     }
 
+    bool pipeline_is_control_flow(const DecodedInst& inst) {
+        switch (inst.op) {
+        case Opcode::B:
+        case Opcode::BEQ:
+        case Opcode::BNE:
+        case Opcode::BLT:
+        case Opcode::BGE:
+        case Opcode::BLTU:
+        case Opcode::BGEU:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     uint32_t pipeline_forward_operand(
         uint32_t reg_index,
         uint32_t latched_value,
@@ -146,6 +161,85 @@ namespace {
         }
 
         return latched_value;
+    }
+
+    TracePipelineStage make_trace_stage_from_raw(
+        uint32_t pc,
+        uint32_t raw,
+        const char* state
+    ) {
+        TracePipelineStage stage{};
+        stage.state = state;
+        stage.has_pc = true;
+        stage.pc = pc;
+        stage.has_raw = true;
+        stage.raw = raw;
+        stage.op = opcode_to_string(decode(raw).op);
+        return stage;
+    }
+
+    TracePipelineStage make_trace_stage_from_inst(
+        uint32_t pc,
+        const DecodedInst& inst,
+        const char* state
+    ) {
+        TracePipelineStage stage{};
+        stage.state = state;
+        stage.has_pc = true;
+        stage.pc = pc;
+        stage.has_raw = true;
+        stage.raw = inst.raw;
+        stage.op = opcode_to_string(inst.op);
+        return stage;
+    }
+
+    void choose_trace_focus(
+        const PipelineState& pipeline,
+        bool has_fetch,
+        uint32_t fetch_pc,
+        uint32_t fetch_raw,
+        uint32_t& trace_pc,
+        uint32_t& trace_raw,
+        DecodedInst& trace_inst
+    ) {
+        if (pipeline.if_id.valid) {
+            trace_pc = pipeline.if_id.pc;
+            trace_raw = pipeline.if_id.raw;
+            trace_inst = decode(pipeline.if_id.raw);
+            return;
+        }
+
+        if (pipeline.id_ex.valid) {
+            trace_pc = pipeline.id_ex.pc;
+            trace_raw = pipeline.id_ex.inst.raw;
+            trace_inst = pipeline.id_ex.inst;
+            return;
+        }
+
+        if (pipeline.ex_mem.valid) {
+            trace_pc = pipeline.ex_mem.pc;
+            trace_raw = pipeline.ex_mem.inst.raw;
+            trace_inst = pipeline.ex_mem.inst;
+            return;
+        }
+
+        if (pipeline.mem_wb.valid) {
+            trace_pc = pipeline.mem_wb.pc;
+            trace_raw = pipeline.mem_wb.inst.raw;
+            trace_inst = pipeline.mem_wb.inst;
+            return;
+        }
+
+        if (has_fetch) {
+            trace_pc = fetch_pc;
+            trace_raw = fetch_raw;
+            trace_inst = decode(fetch_raw);
+            return;
+        }
+
+        trace_pc = fetch_pc;
+        trace_raw = 0;
+        trace_inst = make_invalid_decoded_inst();
     }
 
     struct PipelineExecuteResult {
@@ -334,6 +428,10 @@ void CPU::step_pipeline_mode() {
         throw std::runtime_error("unaligned PC");
     }
 
+    const CPUState before = state_;
+    const uint32_t fetch_pc_before = state_.pc;
+    trace_begin_step();
+
     if (pipeline_.mem_wb.valid) {
         if (pipeline_writes_back(pipeline_.mem_wb.inst)) {
             state_.gpr[pipeline_.mem_wb.inst.rd] = pipeline_.mem_wb.write_value;
@@ -358,6 +456,8 @@ void CPU::step_pipeline_mode() {
 
     bool flush_for_control_hazard = false;
     uint32_t control_target_pc = state_.pc;
+    bool branch_resolved = false;
+    bool branch_taken = false;
 
     if (pipeline_.id_ex.valid) {
         next.ex_mem.valid = true;
@@ -369,11 +469,20 @@ void CPU::step_pipeline_mode() {
             pipeline_.mem_wb
         );
         next.ex_mem.alu_result = ex_result.alu_result;
+        branch_resolved = pipeline_is_control_flow(pipeline_.id_ex.inst);
+        branch_taken = ex_result.branch_taken;
         flush_for_control_hazard = ex_result.branch_taken;
         control_target_pc = ex_result.branch_target;
     }
 
+    if (branch_resolved) {
+        trace_note_branch(branch_taken);
+    }
+
     bool stall_for_raw_hazard = false;
+    bool fetched_instruction = false;
+    uint32_t fetched_pc = fetch_pc_before;
+    uint32_t fetched_raw = 0;
 
     if (!flush_for_control_hazard && pipeline_.if_id.valid) {
         DecodedInst decoded = decode(pipeline_.if_id.raw);
@@ -420,8 +529,9 @@ void CPU::step_pipeline_mode() {
         next.if_id = pipeline_.if_id;
     }
     else {
-        const uint32_t fetched_pc = state_.pc;
-        const uint32_t fetched_raw = mem_.read32(fetched_pc);
+        fetched_pc = state_.pc;
+        fetched_raw = mem_.read32(fetched_pc);
+        fetched_instruction = true;
         next.if_id.valid = true;
         next.if_id.pc = fetched_pc;
         next.if_id.raw = fetched_raw;
@@ -429,8 +539,91 @@ void CPU::step_pipeline_mode() {
         state_.pc = fetched_pc + 4;
     }
 
+    TracePipelineInfo pipeline_trace{};
+    pipeline_trace.enabled = true;
+    pipeline_trace.cycle = pipeline_.cycle;
+
+    if (fetched_instruction) {
+        pipeline_trace.if_stage = make_trace_stage_from_raw(fetched_pc, fetched_raw, "fetch");
+    }
+    else if (stall_for_raw_hazard) {
+        pipeline_trace.if_stage.state = "stalled";
+        pipeline_trace.if_stage.has_pc = true;
+        pipeline_trace.if_stage.pc = fetch_pc_before;
+    }
+    else if (flush_for_control_hazard) {
+        pipeline_trace.if_stage.state = "flushed";
+        pipeline_trace.if_stage.has_pc = true;
+        pipeline_trace.if_stage.pc = fetch_pc_before;
+    }
+
+    if (pipeline_.if_id.valid) {
+        const char* id_state = "occupied";
+        if (flush_for_control_hazard) {
+            id_state = "flushed";
+        }
+        else if (stall_for_raw_hazard) {
+            id_state = "stalled";
+        }
+        pipeline_trace.id_stage = make_trace_stage_from_raw(
+            pipeline_.if_id.pc,
+            pipeline_.if_id.raw,
+            id_state
+        );
+    }
+
+    if (pipeline_.id_ex.valid) {
+        pipeline_trace.ex_stage = make_trace_stage_from_inst(
+            pipeline_.id_ex.pc,
+            pipeline_.id_ex.inst,
+            "occupied"
+        );
+    }
+
+    if (pipeline_.ex_mem.valid) {
+        pipeline_trace.mem_stage = make_trace_stage_from_inst(
+            pipeline_.ex_mem.pc,
+            pipeline_.ex_mem.inst,
+            "occupied"
+        );
+    }
+
+    if (pipeline_.mem_wb.valid) {
+        pipeline_trace.wb_stage = make_trace_stage_from_inst(
+            pipeline_.mem_wb.pc,
+            pipeline_.mem_wb.inst,
+            "occupied"
+        );
+    }
+
+    if (stall_for_raw_hazard) {
+        pipeline_trace.stall = true;
+        pipeline_trace.stall_reason = "raw_hazard";
+        pipeline_trace.bubble_stages.push_back("EX");
+    }
+
+    if (flush_for_control_hazard) {
+        pipeline_trace.flush_stages.push_back("IF");
+        pipeline_trace.flush_stages.push_back("ID");
+    }
+
     state_.gpr[0] = 0;
     pipeline_ = next;
+
+    uint32_t trace_pc = fetch_pc_before;
+    uint32_t trace_raw = 0;
+    DecodedInst trace_inst = make_invalid_decoded_inst();
+    choose_trace_focus(
+        pipeline_,
+        fetched_instruction,
+        fetched_pc,
+        fetched_raw,
+        trace_pc,
+        trace_raw,
+        trace_inst
+    );
+    trace_note_pipeline(pipeline_trace);
+    trace_step_jsonl(trace_pc, trace_raw, trace_inst, before, state_);
 }
 
 void CPU::run(uint64_t max_steps) {

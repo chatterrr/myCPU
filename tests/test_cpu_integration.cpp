@@ -9,6 +9,7 @@
 #include "loader/loader.h"
 #include "memory/memory.h"
 #include "tests/test_programs.h"
+#include "utils/debug.h"
 
 namespace {
 
@@ -16,6 +17,10 @@ namespace {
         if (!cond) {
             throw std::runtime_error("[TEST FAIL] " + msg);
         }
+    }
+
+    void expect_contains(const std::string& text, const std::string& needle, const std::string& msg) {
+        expect(text.find(needle) != std::string::npos, msg + " missing: " + needle);
     }
 
     struct ProgramContext {
@@ -32,6 +37,25 @@ namespace {
     ) {
         Loader::load_program_words(ctx.mem, base, words);
         ctx.cpu.reset(base);
+    }
+
+    std::string capture_trace_for_program(
+        const std::vector<uint32_t>& words,
+        uint64_t max_steps,
+        bool pipeline_mode,
+        uint32_t base = config::PROGRAM_BASE
+    ) {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(pipeline_mode);
+        load_and_reset(ctx, words, base);
+
+        std::ostringstream trace;
+        set_trace_stream(&trace);
+        trace_meta_jsonl("test-program", base, base, max_steps, pipeline_mode);
+        ctx.cpu.run(max_steps);
+        trace_summary_jsonl(ctx.cpu.state());
+        clear_trace_stream();
+        return trace.str();
     }
 
     void test_arith_program() {
@@ -270,6 +294,29 @@ namespace {
         expect(s.gpr[22] == 0, "pipeline-branch: r22 should remain 0 after flush");
     }
 
+    void test_pipeline_trace_records() {
+        const std::string load_use_trace = capture_trace_for_program(
+            tests::kPipelineLoadUseProgramWords,
+            tests::kPipelineLoadUseProgramSteps,
+            true,
+            0
+        );
+        expect_contains(load_use_trace, "\"pipeline_mode\":true", "pipeline trace meta should mark pipeline mode");
+        expect_contains(load_use_trace, "\"pipeline\":{\"cycle\":", "pipeline trace should include per-cycle pipeline payload");
+        expect_contains(load_use_trace, "\"if\":{\"state\":\"fetch\"", "pipeline trace should include IF occupancy");
+        expect_contains(load_use_trace, "\"stall\":true", "load-use trace should record a stall");
+        expect_contains(load_use_trace, "\"stall_reason\":\"raw_hazard\"", "load-use trace should explain the stall");
+        expect_contains(load_use_trace, "\"bubble\":[\"EX\"]", "load-use trace should record the inserted EX bubble");
+
+        const std::string branch_trace = capture_trace_for_program(
+            tests::kPipelineBranchProgramWords,
+            tests::kPipelineBranchProgramSteps,
+            true
+        );
+        expect_contains(branch_trace, "\"flush\":[\"IF\",\"ID\"]", "branch trace should record flushed younger stages");
+        expect_contains(branch_trace, "\"id\":{\"state\":\"flushed\"", "branch trace should mark the flushed ID stage");
+    }
+
 }  // namespace
 
 int main() {
@@ -293,6 +340,7 @@ int main() {
         test_pipeline_forwarding_program();
         test_pipeline_load_use_program();
         test_pipeline_branch_program();
+        test_pipeline_trace_records();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;

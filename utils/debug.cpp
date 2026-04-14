@@ -21,6 +21,9 @@ namespace {
 
         bool has_uart = false;
         std::string uart_text;
+
+        bool has_pipeline = false;
+        TracePipelineInfo pipeline;
     };
 
     TraceExtras g_trace_extras{};
@@ -48,6 +51,39 @@ namespace {
         os << '"';
     }
 
+    void write_json_string_array(std::ostream& os, const std::vector<std::string>& items) {
+        os << "[";
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (i > 0) {
+                os << ",";
+            }
+            write_json_string(os, items[i]);
+        }
+        os << "]";
+    }
+
+    void write_trace_pipeline_stage(std::ostream& os, const TracePipelineStage& stage) {
+        os << "{\"state\":";
+        write_json_string(os, stage.state);
+
+        if (stage.has_pc) {
+            os << ",\"pc\":";
+            write_json_string(os, hex_u32(stage.pc));
+        }
+
+        if (stage.has_raw) {
+            os << ",\"raw\":";
+            write_json_string(os, hex_u32(stage.raw));
+        }
+
+        if (!stage.op.empty()) {
+            os << ",\"op\":";
+            write_json_string(os, stage.op);
+        }
+
+        os << "}";
+    }
+
 }  // namespace
 
 const char* opcode_to_string(Opcode op) {
@@ -64,6 +100,10 @@ const char* opcode_to_string(Opcode op) {
     case Opcode::B:        return "B";
     case Opcode::BEQ:      return "BEQ";
     case Opcode::BNE:      return "BNE";
+    case Opcode::BLT:      return "BLT";
+    case Opcode::BGE:      return "BGE";
+    case Opcode::BLTU:     return "BLTU";
+    case Opcode::BGEU:     return "BGEU";
     case Opcode::LU12I_W:  return "LU12I_W";
     case Opcode::INVALID:  return "INVALID";
     }
@@ -141,11 +181,17 @@ void trace_note_uart_char(uint8_t ch) {
     g_trace_extras.uart_text.push_back(static_cast<char>(ch));
 }
 
+void trace_note_pipeline(const TracePipelineInfo& info) {
+    g_trace_extras.has_pipeline = info.enabled;
+    g_trace_extras.pipeline = info;
+}
+
 void trace_meta_jsonl(
     const std::string& program_name,
     uint32_t load_base,
     uint32_t entry_pc,
-    uint64_t max_steps) {
+    uint64_t max_steps,
+    bool pipeline_mode) {
     if (!g_trace_stream) {
         return;
     }
@@ -158,6 +204,7 @@ void trace_meta_jsonl(
     os << ",\"entry_pc\":";
     write_json_string(os, hex_u32(entry_pc));
     os << ",\"max_steps\":" << max_steps
+        << ",\"pipeline_mode\":" << (pipeline_mode ? "true" : "false")
         << "}\n";
 }
 
@@ -230,6 +277,34 @@ void trace_step_jsonl(
     }
     else {
         os << "null";
+    }
+
+    if (g_trace_extras.has_pipeline) {
+        const TracePipelineInfo& pipeline = g_trace_extras.pipeline;
+        os << ",\"pipeline\":{\"cycle\":" << pipeline.cycle
+            << ",\"if\":";
+        write_trace_pipeline_stage(os, pipeline.if_stage);
+        os << ",\"id\":";
+        write_trace_pipeline_stage(os, pipeline.id_stage);
+        os << ",\"ex\":";
+        write_trace_pipeline_stage(os, pipeline.ex_stage);
+        os << ",\"mem\":";
+        write_trace_pipeline_stage(os, pipeline.mem_stage);
+        os << ",\"wb\":";
+        write_trace_pipeline_stage(os, pipeline.wb_stage);
+        os << ",\"stall\":" << (pipeline.stall ? "true" : "false")
+            << ",\"stall_reason\":";
+        if (!pipeline.stall_reason.empty()) {
+            write_json_string(os, pipeline.stall_reason);
+        }
+        else {
+            os << "null";
+        }
+        os << ",\"bubble\":";
+        write_json_string_array(os, pipeline.bubble_stages);
+        os << ",\"flush\":";
+        write_json_string_array(os, pipeline.flush_stages);
+        os << "}";
     }
 
     os << "}\n";

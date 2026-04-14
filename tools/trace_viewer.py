@@ -110,6 +110,12 @@ class TraceModel:
 
     def get_step_title(self, index: int) -> str:
         step = self.steps[index]
+        pipeline = step.get("pipeline")
+        if isinstance(pipeline, dict):
+            cycle = pipeline.get("cycle", index)
+            if_stage = self._pipeline_stage_brief(pipeline.get("if"))
+            ex_stage = self._pipeline_stage_brief(pipeline.get("ex"))
+            return f"C{cycle:>3}  IF {if_stage:<20} EX {ex_stage}"
         step_no = step.get("step", index)
         pc = step.get("pc", "N/A")
         op = step.get("op", "UNKNOWN")
@@ -120,6 +126,21 @@ class TraceModel:
 
     def get_uart_text(self, index: int) -> str:
         return self.uart_text_per_step[index]
+
+    @staticmethod
+    def _pipeline_stage_brief(stage: Any) -> str:
+        if not isinstance(stage, dict):
+            return "-"
+        state = str(stage.get("state", "empty"))
+        op = stage.get("op")
+        pc = stage.get("pc")
+        if state == "empty":
+            return "empty"
+        if op and pc:
+            return f"{state}:{op}@{pc}"
+        if pc:
+            return f"{state}:{pc}"
+        return state
 
 
 class TraceViewerApp:
@@ -183,7 +204,7 @@ class TraceViewerApp:
         self.main_pane.add(left_frame, weight=1)
 
         right_frame = ttk.Frame(self.main_pane, padding=8)
-        right_frame.rowconfigure(2, weight=1)
+        right_frame.rowconfigure(3, weight=1)
         right_frame.columnconfigure(0, weight=1)
 
         meta_box = ttk.LabelFrame(right_frame, text="Trace Meta", padding=8)
@@ -237,8 +258,37 @@ class TraceViewerApp:
         self._add_kv(detail_box, 7, "GPR changes", self.gpr_changes_var, 0, span=4)
         self._add_kv(detail_box, 8, "Mem write", self.mem_write_var, 0, span=4)
 
+        pipeline_box = ttk.LabelFrame(right_frame, text="Pipeline", padding=8)
+        pipeline_box.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        for c in range(5):
+            pipeline_box.columnconfigure(c, weight=1)
+
+        self.pipeline_cycle_var = tk.StringVar(value="Cycle: -")
+        self.pipeline_events_var = tk.StringVar(value="Events: -")
+        self.if_stage_var = tk.StringVar(value="-")
+        self.id_stage_var = tk.StringVar(value="-")
+        self.ex_stage_var = tk.StringVar(value="-")
+        self.mem_stage_var = tk.StringVar(value="-")
+        self.wb_stage_var = tk.StringVar(value="-")
+
+        for idx, (label, variable) in enumerate(
+            (
+                ("IF", self.if_stage_var),
+                ("ID", self.id_stage_var),
+                ("EX", self.ex_stage_var),
+                ("MEM", self.mem_stage_var),
+                ("WB", self.wb_stage_var),
+            )
+        ):
+            stage_box = ttk.LabelFrame(pipeline_box, text=label, padding=6)
+            stage_box.grid(row=0, column=idx, sticky="nsew", padx=(0, 6) if idx < 4 else 0)
+            ttk.Label(stage_box, textvariable=variable, justify="left").grid(row=0, column=0, sticky="w")
+
+        ttk.Label(pipeline_box, textvariable=self.pipeline_cycle_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(pipeline_box, textvariable=self.pipeline_events_var).grid(row=1, column=2, columnspan=3, sticky="w", pady=(8, 0))
+
         bottom_pane = ttk.Panedwindow(right_frame, orient=tk.VERTICAL)
-        bottom_pane.grid(row=2, column=0, sticky="nsew")
+        bottom_pane.grid(row=3, column=0, sticky="nsew")
 
         upper_bottom = ttk.Panedwindow(bottom_pane, orient=tk.HORIZONTAL)
 
@@ -458,6 +508,7 @@ class TraceViewerApp:
 
         self._refresh_reg_view(index)
         self._refresh_uart_view(index)
+        self._refresh_pipeline_view(step)
 
     def _refresh_reg_view(self, index: int) -> None:
         for item in self.reg_tree.get_children():
@@ -478,6 +529,57 @@ class TraceViewerApp:
     def _refresh_uart_view(self, index: int) -> None:
         text = self.model.get_uart_text(index)
         self._set_text_widget(self.uart_text, text)
+
+    def _refresh_pipeline_view(self, step: TraceRecord) -> None:
+        pipeline = step.get("pipeline")
+        if not isinstance(pipeline, dict):
+            self.pipeline_cycle_var.set("Cycle: -")
+            self.pipeline_events_var.set("Events: -")
+            self.if_stage_var.set("-")
+            self.id_stage_var.set("-")
+            self.ex_stage_var.set("-")
+            self.mem_stage_var.set("-")
+            self.wb_stage_var.set("-")
+            return
+
+        self.pipeline_cycle_var.set(f"Cycle: {pipeline.get('cycle', '-')}")
+        self.if_stage_var.set(self._format_pipeline_stage(pipeline.get("if")))
+        self.id_stage_var.set(self._format_pipeline_stage(pipeline.get("id")))
+        self.ex_stage_var.set(self._format_pipeline_stage(pipeline.get("ex")))
+        self.mem_stage_var.set(self._format_pipeline_stage(pipeline.get("mem")))
+        self.wb_stage_var.set(self._format_pipeline_stage(pipeline.get("wb")))
+
+        events: List[str] = []
+        if pipeline.get("stall"):
+            reason = pipeline.get("stall_reason") or "yes"
+            events.append(f"stall: {reason}")
+
+        bubble = pipeline.get("bubble")
+        if isinstance(bubble, list) and bubble:
+            events.append("bubble: " + ", ".join(str(item) for item in bubble))
+
+        flush = pipeline.get("flush")
+        if isinstance(flush, list) and flush:
+            events.append("flush: " + ", ".join(str(item) for item in flush))
+
+        self.pipeline_events_var.set("Events: " + (" | ".join(events) if events else "-"))
+
+    @staticmethod
+    def _format_pipeline_stage(stage: Any) -> str:
+        if not isinstance(stage, dict):
+            return "-"
+
+        lines = [f"state: {stage.get('state', 'empty')}"]
+        pc = stage.get("pc")
+        if pc is not None:
+            lines.append(f"pc: {pc}")
+        op = stage.get("op")
+        if op:
+            lines.append(f"op: {op}")
+        raw = stage.get("raw")
+        if raw is not None:
+            lines.append(f"raw: {raw}")
+        return "\n".join(lines)
 
     @staticmethod
     def _set_text_widget(widget: tk.Text, content: str) -> None:

@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
                 throw std::runtime_error("Failed to open trace output file: " + trace_path);
             }
             set_trace_stream(&trace_out);
-            trace_meta_jsonl(program_name, load_base, entry_pc, max_steps);
+            trace_meta_jsonl(program_name, load_base, entry_pc, max_steps, pipeline_mode);
         }
 
         CPU cpu(mem);
