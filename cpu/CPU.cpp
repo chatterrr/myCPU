@@ -46,6 +46,46 @@ namespace {
         }
     }
 
+    bool pipeline_reads_rj(const DecodedInst& inst) {
+        switch (inst.op) {
+        case Opcode::ADD_W:
+        case Opcode::SUB_W:
+        case Opcode::ADDI_W:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool pipeline_reads_rk(const DecodedInst& inst) {
+        switch (inst.op) {
+        case Opcode::ADD_W:
+        case Opcode::SUB_W:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool pipeline_has_raw_hazard(const DecodedInst& consumer, const DecodedInst& producer) {
+        if (!pipeline_writes_back(producer)) {
+            return false;
+        }
+
+        const uint32_t pending_rd = producer.rd;
+        if (pending_rd == 0) {
+            return false;
+        }
+
+        if (pipeline_reads_rj(consumer) && consumer.rj == pending_rd) {
+            return true;
+        }
+        if (pipeline_reads_rk(consumer) && consumer.rk == pending_rd) {
+            return true;
+        }
+        return false;
+    }
+
     uint32_t pipeline_execute_alu(const PipelineIDEX& stage) {
         switch (stage.inst.op) {
         case Opcode::ADD_W:
@@ -193,6 +233,8 @@ void CPU::step_pipeline_mode() {
         next.ex_mem.alu_result = pipeline_execute_alu(pipeline_.id_ex);
     }
 
+    bool stall_for_raw_hazard = false;
+
     if (pipeline_.if_id.valid) {
         DecodedInst decoded = decode(pipeline_.if_id.raw);
         if (decoded.op == Opcode::INVALID) {
@@ -210,20 +252,32 @@ void CPU::step_pipeline_mode() {
             throw std::runtime_error(buf);
         }
 
-        next.id_ex.valid = true;
-        next.id_ex.pc = pipeline_.if_id.pc;
-        next.id_ex.inst = decoded;
-        next.id_ex.src1_value = state_.gpr[decoded.rj];
-        next.id_ex.src2_value = state_.gpr[decoded.rk];
+        stall_for_raw_hazard =
+            (pipeline_.id_ex.valid && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst))
+            || (pipeline_.ex_mem.valid && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst));
+
+        if (!stall_for_raw_hazard) {
+            next.id_ex.valid = true;
+            next.id_ex.pc = pipeline_.if_id.pc;
+            next.id_ex.inst = decoded;
+            next.id_ex.src1_value = state_.gpr[decoded.rj];
+            next.id_ex.src2_value = state_.gpr[decoded.rk];
+        }
     }
 
-    const uint32_t fetched_pc = state_.pc;
-    const uint32_t fetched_raw = mem_.read32(fetched_pc);
-    next.if_id.valid = true;
-    next.if_id.pc = fetched_pc;
-    next.if_id.raw = fetched_raw;
+    if (stall_for_raw_hazard) {
+        next.if_id = pipeline_.if_id;
+    }
+    else {
+        const uint32_t fetched_pc = state_.pc;
+        const uint32_t fetched_raw = mem_.read32(fetched_pc);
+        next.if_id.valid = true;
+        next.if_id.pc = fetched_pc;
+        next.if_id.raw = fetched_raw;
 
-    state_.pc = fetched_pc + 4;
+        state_.pc = fetched_pc + 4;
+    }
+
     state_.gpr[0] = 0;
     pipeline_ = next;
 }

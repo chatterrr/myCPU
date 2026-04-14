@@ -62,10 +62,11 @@ namespace {
         if (name == "lu12i") return tests::kLu12iProgramWords;
         if (name == "uart") return tests::kUartProgramWords;
         if (name == "pipeline-nohaz") return tests::kPipelineNoHazardProgramWords;
+        if (name == "pipeline-raw") return tests::kPipelineRawHazardProgramWords;
 
         throw std::runtime_error(
             "Unknown built-in program: " + name +
-            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz");
+            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz, pipeline-raw");
     }
 
     void print_usage(const char* argv0) {
@@ -86,7 +87,7 @@ namespace {
             << "  --trace <path>       Write JSONL execution trace for visualization.\n"
             << "  -h, --help           Show this help message.\n\n"
             << "Built-in programs:\n"
-            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz\n\n"
+            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz, pipeline-raw\n\n"
             << "Notes:\n"
             << "  Exactly one of --bin, --use-program, or --use-smoke must be provided.\n"
             << "  If --entry is not given, it defaults to the load base address.\n";

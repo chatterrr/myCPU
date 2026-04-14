@@ -67,6 +67,7 @@ namespace tests {
     inline constexpr uint64_t kLu12iProgramSteps = 3;
     inline constexpr uint64_t kUartProgramSteps = 8;
     inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
+    inline constexpr uint64_t kPipelineRawHazardProgramSteps = 11;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -196,6 +197,16 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // nop
         ENC_3R(OP_SUB_W, 5, 4, 1),      // r5 = 7
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+    };
+
+    // 14) pipeline RAW hazard demo without hand-written spacing
+    inline const std::vector<uint32_t> kPipelineRawHazardProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, 5),  // r1 = 5
+        ENC_2RI12(OP_ADDI_W, 2, 1, 7),  // r2 = r1 + 7 = 12
+        ENC_3R(OP_ADD_W, 4, 2, 1),      // r4 = r2 + r1 = 17
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
