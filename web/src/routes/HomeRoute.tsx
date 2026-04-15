@@ -6,6 +6,7 @@ import {
   type ChangeEvent
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { Link } from "react-router-dom";
 import { Panel } from "@/components/Panel";
 import { Tag, type TagTone } from "@/components/Tag";
 import { hazardLessonContractNotes } from "@/features/lesson_hazard/contracts";
@@ -210,6 +211,77 @@ export function HomeRoute() {
             </div>
           </div>
         </motion.header>
+
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.08 }}
+          className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]"
+        >
+          <Link
+            to="/hazard-puzzle"
+            className="group rounded-[30px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(251,191,36,0.15),rgba(15,23,42,0.88))] p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] transition hover:-translate-y-0.5 hover:border-amber-200/35 hover:shadow-[0_36px_90px_rgba(2,6,23,0.42)]"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Tag label="入口 1 / Milestone 9" tone="amber" />
+              <span className="text-xs uppercase tracking-[0.28em] text-amber-100/80">
+                Hazard puzzle live
+              </span>
+            </div>
+
+            <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-50">
+              Hazard 解谜
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">
+              用 4 个短关卡讲清 RAW、load-use、branch hazard，直接把
+              stall、bubble、forward、flush 画在 5 级流水线上。
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Tag label="RAW" tone="amber" />
+              <Tag label="load-use" tone="amber" />
+              <Tag label="branch" tone="rose" />
+              <Tag label="forward" tone="cyan" />
+            </div>
+
+            <div className="mt-6 inline-flex items-center rounded-full border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.28em] text-amber-50 transition group-hover:border-amber-100/35 group-hover:bg-amber-100/15">
+              Open puzzle mode
+            </div>
+          </Link>
+
+          <div className="rounded-[30px] border border-white/10 bg-slate-950/75 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] backdrop-blur">
+            <div className="flex flex-wrap gap-2">
+              <Tag label="入口 2 / Foundation" tone="cyan" />
+            </div>
+            <h2 className="mt-5 text-2xl font-semibold tracking-tight text-slate-50">
+              Trace 舞台仍然保留
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-slate-300">
+              下面这块最小 pipeline viewer 继续作为底座存在。M9 的解谜模式和
+              后续 M10 的 traffic game 都复用同一份 TraceDocument 与
+              cycle inspector。
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                  Reuse
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-200">
+                  同一份 JSONL、同一份 parser、同一套 stage 顺序。
+                </p>
+              </div>
+              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                  Why it matters
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-200">
+                  保证课程演示和 trace 工作流不分叉，不需要改 CPU 协议。
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.section>
 
         <div className="grid gap-6 xl:grid-cols-[340px,1fr]">
           <motion.div

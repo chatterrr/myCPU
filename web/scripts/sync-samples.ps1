@@ -8,6 +8,8 @@ $targetDir = Join-Path $webRoot "public\\traces"
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 
 $traceNames = @(
+    "pipeline-raw.jsonl",
+    "pipeline-forward.jsonl",
     "pipeline-loaduse.jsonl",
     "pipeline-branch.jsonl"
 )

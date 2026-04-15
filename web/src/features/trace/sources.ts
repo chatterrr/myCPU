@@ -10,6 +10,18 @@ export interface SampleTraceOption {
 
 export const sampleTraceOptions: SampleTraceOption[] = [
   {
+    id: "pipeline-raw",
+    label: "RAW chain",
+    path: "traces/pipeline-raw.jsonl",
+    summary: "Shows a tight RAW dependency chain before the pipeline reacts."
+  },
+  {
+    id: "pipeline-forward",
+    label: "Forward bridge",
+    path: "traces/pipeline-forward.jsonl",
+    summary: "Shows dual forwarding paths that keep SUB_W moving in EX."
+  },
+  {
     id: "pipeline-loaduse",
     label: "Load-use stall",
     path: "traces/pipeline-loaduse.jsonl",
