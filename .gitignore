@@ -226,3 +226,4 @@ __pycache__/
 # *.png
 # *.svg
 >>>>>>> master
+.codex/
