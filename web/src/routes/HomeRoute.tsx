@@ -1,117 +1,172 @@
-import {
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useState,
-  type ChangeEvent
-} from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { startTransition, useEffect, useState } from "react";
+import { motion } from "motion/react";
 import { Link } from "react-router-dom";
-import { Panel } from "@/components/Panel";
-import { Tag, type TagTone } from "@/components/Tag";
-import { hazardLessonContractNotes } from "@/features/lesson_hazard/contracts";
 import { PipelineStageCanvas } from "@/features/pipeline/PipelineStageCanvas";
+import type { PipelineTone } from "@/features/pipeline/visuals";
 import {
-  loadTraceFromFile,
   loadTraceFromSample,
   sampleTraceOptions
 } from "@/features/trace/sources";
-import type { TraceDocument, TraceStepRecord } from "@/features/trace/types";
-import { trafficGameContractNotes } from "@/features/traffic_game/contracts";
+import type { TraceDocument } from "@/features/trace/types";
 
-function clampStepIndex(
-  nextIndex: number,
-  trace: TraceDocument | null
-): number {
-  if (!trace) {
-    return 0;
+type PreviewScene = {
+  id: string;
+  mode: "hazard" | "traffic";
+  traceSampleId: string;
+  stepIndex: number;
+  title: string;
+  subtitle: string;
+  badge: string;
+  pulseTone: PipelineTone;
+  stageHighlights: Array<{
+    stage: "if" | "id" | "ex" | "mem" | "wb";
+    label: string;
+    tone: "cyan" | "amber" | "emerald" | "rose";
+  }>;
+  flowHints: Array<{
+    fromStage: "if" | "id" | "ex" | "mem" | "wb";
+    toStage: "if" | "id" | "ex" | "mem" | "wb";
+    label: string;
+    tone: "cyan" | "amber" | "emerald" | "rose";
+    lane?: number;
+  }>;
+};
+
+const sampleOptionById = new Map(
+  sampleTraceOptions.map((option) => [option.id, option])
+);
+
+const homePreviewScenes: PreviewScene[] = [
+  {
+    id: "raw-shadow",
+    mode: "hazard",
+    traceSampleId: "pipeline-raw",
+    stepIndex: 3,
+    title: "RAW 阴影",
+    subtitle: "译码在等前面两条指令的结果落地。",
+    badge: "识别依赖",
+    pulseTone: "amber",
+    stageHighlights: [
+      { stage: "id", label: "等待", tone: "amber" },
+      { stage: "ex", label: "producer", tone: "amber" },
+      { stage: "mem", label: "producer", tone: "amber" }
+    ],
+    flowHints: [
+      { fromStage: "mem", toStage: "id", label: "r1", tone: "amber", lane: 0 },
+      { fromStage: "ex", toStage: "id", label: "r2", tone: "amber", lane: 1 }
+    ]
+  },
+  {
+    id: "forward-bridge",
+    mode: "hazard",
+    traceSampleId: "pipeline-forward",
+    stepIndex: 5,
+    title: "旁路桥接",
+    subtitle: "EX 借道 MEM / WB，继续推进而不停车。",
+    badge: "看清旁路",
+    pulseTone: "cyan",
+    stageHighlights: [
+      { stage: "ex", label: "consumer", tone: "cyan" },
+      { stage: "mem", label: "r4", tone: "emerald" },
+      { stage: "wb", label: "r2", tone: "emerald" }
+    ],
+    flowHints: [
+      { fromStage: "mem", toStage: "ex", label: "r4", tone: "cyan", lane: 0 },
+      { fromStage: "wb", toStage: "ex", label: "r2", tone: "cyan", lane: 1 }
+    ]
+  },
+  {
+    id: "traffic-hold",
+    mode: "traffic",
+    traceSampleId: "pipeline-loaduse",
+    stepIndex: 2,
+    title: "红灯控流",
+    subtitle: "load 结果未到，前端短暂停住，EX 插入空泡。",
+    badge: "停车等待",
+    pulseTone: "amber",
+    stageHighlights: [
+      { stage: "if", label: "红灯", tone: "amber" },
+      { stage: "id", label: "暂停", tone: "amber" },
+      { stage: "ex", label: "bubble", tone: "amber" }
+    ],
+    flowHints: [
+      {
+        fromStage: "ex",
+        toStage: "id",
+        label: "load 未到",
+        tone: "amber",
+        lane: 0
+      }
+    ]
+  },
+  {
+    id: "traffic-flush",
+    mode: "traffic",
+    traceSampleId: "pipeline-branch",
+    stepIndex: 4,
+    title: "错误路径清场",
+    subtitle: "分支成立后，前方错路车辆被整段冲刷出去。",
+    badge: "红色清扫",
+    pulseTone: "rose",
+    stageHighlights: [
+      { stage: "ex", label: "判定", tone: "rose" },
+      { stage: "if", label: "清场", tone: "rose" },
+      { stage: "id", label: "清场", tone: "rose" }
+    ],
+    flowHints: [
+      { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
+      { fromStage: "ex", toStage: "if", label: "flush", tone: "rose", lane: 1 }
+    ]
+  }
+];
+
+function getScenePool(mode: "all" | "hazard" | "traffic") {
+  if (mode === "all") {
+    return homePreviewScenes;
   }
 
-  return Math.max(0, Math.min(nextIndex, trace.steps.length - 1));
-}
-
-function formatChangeSet(step: TraceStepRecord) {
-  if (!step.gpr_changes.length) {
-    return "None";
-  }
-
-  return step.gpr_changes.map((change) => `r${change.reg}=${change.value}`).join(", ");
-}
-
-function formatUnknown(value: unknown) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return JSON.stringify(value);
-}
-
-function buildEventTags(step: TraceStepRecord): Array<{
-  label: string;
-  tone: TagTone;
-}> {
-  const tags: Array<{ label: string; tone: TagTone }> = [];
-
-  if (step.pipeline?.stall) {
-    tags.push({
-      label: `stall ${step.pipeline.stall_reason ?? "hazard"}`,
-      tone: "amber"
-    });
-  }
-
-  step.pipeline?.bubble.forEach((bubbleStage) => {
-    tags.push({ label: `bubble ${bubbleStage}`, tone: "amber" });
-  });
-
-  step.pipeline?.flush.forEach((flushStage) => {
-    tags.push({ label: `flush ${flushStage}`, tone: "rose" });
-  });
-
-  if (step.branched) {
-    tags.push({ label: "branch taken", tone: "emerald" });
-  }
-
-  if (!tags.length) {
-    tags.push({ label: "steady flow", tone: "cyan" });
-  }
-
-  return tags;
+  return homePreviewScenes.filter((scene) => scene.mode === mode);
 }
 
 export function HomeRoute() {
-  const [selectedSampleId, setSelectedSampleId] = useState(sampleTraceOptions[0].id);
-  const [sampleRevision, setSampleRevision] = useState(0);
-  const [trace, setTrace] = useState<TraceDocument | null>(null);
-  const [sourceLabel, setSourceLabel] = useState(sampleTraceOptions[0].label);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [traceMap, setTraceMap] = useState<Record<string, TraceDocument>>({});
+  const [previewMode, setPreviewMode] = useState<"all" | "hazard" | "traffic">(
+    "all"
+  );
+  const [sceneIndex, setSceneIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const selectedSample =
-      sampleTraceOptions.find((sample) => sample.id === selectedSampleId) ??
-      sampleTraceOptions[0];
 
-    async function loadSample() {
+    async function loadScenes() {
       setIsLoading(true);
       setError(null);
 
       try {
-        const nextTrace = await loadTraceFromSample(selectedSample);
+        const sampleIds = Array.from(
+          new Set(homePreviewScenes.map((scene) => scene.traceSampleId))
+        );
+
+        const entries = await Promise.all(
+          sampleIds.map(async (sampleId) => {
+            const option = sampleOptionById.get(sampleId);
+
+            if (!option) {
+              throw new Error(`缺少示例 trace: ${sampleId}`);
+            }
+
+            return [sampleId, await loadTraceFromSample(option)] as const;
+          })
+        );
 
         if (cancelled) {
           return;
         }
 
         startTransition(() => {
-          setTrace(nextTrace);
-          setSourceLabel(selectedSample.label);
-          setStepIndex(0);
+          setTraceMap(Object.fromEntries(entries));
           setIsLoading(false);
         });
       } catch (loadError) {
@@ -124,452 +179,237 @@ export function HomeRoute() {
       }
     }
 
-    void loadSample();
+    void loadScenes();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedSampleId, sampleRevision]);
+  }, []);
 
-  const deferredIndex = useDeferredValue(stepIndex);
-  const currentStep = trace
-    ? trace.steps[clampStepIndex(deferredIndex, trace)]
-    : null;
-  const currentTags = currentStep ? buildEventTags(currentStep) : [];
+  useEffect(() => {
+    setSceneIndex(0);
+  }, [previewMode]);
 
-  async function onTraceUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  useEffect(() => {
+    const pool = getScenePool(previewMode);
 
-    if (!file) {
+    if (pool.length <= 1) {
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    const timer = window.setInterval(() => {
+      setSceneIndex((current) => (current + 1) % pool.length);
+    }, 2400);
 
-    try {
-      const nextTrace = await loadTraceFromFile(file);
-      startTransition(() => {
-        setTrace(nextTrace);
-        setSourceLabel(file.name);
-        setStepIndex(0);
-        setIsLoading(false);
-      });
-    } catch (loadError) {
-      setError((loadError as Error).message);
-      setIsLoading(false);
-    }
-  }
+    return () => window.clearInterval(timer);
+  }, [previewMode]);
 
-  function goToStep(nextIndex: number) {
-    startTransition(() => {
-      setStepIndex(clampStepIndex(nextIndex, trace));
-    });
-  }
+  const scenePool = getScenePool(previewMode);
+  const activeScene = scenePool[sceneIndex % scenePool.length];
+  const activeTrace = activeScene ? traceMap[activeScene.traceSampleId] : null;
+  const activeStep = activeScene ? activeTrace?.steps[activeScene.stepIndex] : null;
+  const previousStep =
+    activeScene && activeTrace && activeScene.stepIndex > 0
+      ? activeTrace.steps[activeScene.stepIndex - 1]
+      : null;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_28%),linear-gradient(180deg,_#07111b_0%,_#020617_48%,_#030712_100%)]">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.14),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(52,211,153,0.12),_transparent_26%),linear-gradient(180deg,_#07111b_0%,_#030712_46%,_#020617_100%)]">
+      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <motion.header
-          initial={{ opacity: 0, y: 18 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="grid gap-4 rounded-[32px] border border-cyan-400/15 bg-slate-950/65 p-6 shadow-[0_32px_90px_rgba(2,6,23,0.45)] backdrop-blur xl:grid-cols-[1.3fr,0.7fr]"
+          className="rounded-[34px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur"
         >
-          <div className="space-y-4">
-            <Tag label="Milestone 8 foundation" tone="cyan" />
-            <div className="space-y-3">
-              <h1 className="text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
-                myCPU Pipeline Web Frontend
-              </h1>
-              <p className="max-w-3xl text-base leading-7 text-slate-300 sm:text-lg">
-                A trace-driven frontend that keeps the pipeline viewer, the
-                hazard lesson, and the new traffic-control game on one shared
-                visual stack.
+          <div className="grid gap-5 xl:grid-cols-[1.1fr,0.9fr] xl:items-end">
+            <div className="space-y-4">
+              <p className="text-sm font-medium uppercase tracking-[0.32em] text-cyan-300/85">
+                LoongArch 五级流水线
               </p>
+              <div className="space-y-3">
+                <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl xl:text-6xl">
+                  流水线可视化教学台
+                </h1>
+                <p className="max-w-3xl text-base leading-7 text-slate-300 sm:text-lg">
+                  只保留三件事：看清五级推进、判断 hazard、把控制动作直接变成互动。
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                Data path
-              </p>
-              <p className="mt-3 text-sm leading-6 text-slate-200">
-                `mycpu.exe` trace JSONL feeds the browser parser, then the Pixi
-                stage renders IF / ID / EX / MEM / WB.
-              </p>
-            </div>
-            <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                Shared base
-              </p>
-              <p className="mt-3 text-sm leading-6 text-slate-200">
-                Hazard puzzle and traffic control both extend the same
-                `TraceDocument`, stage board, and cycle inspector.
-              </p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
+                  当前演示
+                </p>
+                <p className="mt-3 text-xl font-semibold text-slate-50">
+                  {activeScene?.title ?? "-"}
+                </p>
+              </div>
+              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
+                  当前节目
+                </p>
+                <p className="mt-3 text-xl font-semibold text-slate-50">
+                  {activeTrace?.meta?.program ?? "-"}
+                </p>
+              </div>
+              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
+                  当前拍数
+                </p>
+                <p className="mt-3 text-xl font-semibold text-slate-50">
+                  {activeStep?.pipeline?.cycle ?? "-"}
+                </p>
+              </div>
             </div>
           </div>
         </motion.header>
 
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.08 }}
-          className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]"
-        >
-          <Link
-            to="/hazard-puzzle"
-            className="group rounded-[30px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(251,191,36,0.15),rgba(15,23,42,0.88))] p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] transition hover:-translate-y-0.5 hover:border-amber-200/35 hover:shadow-[0_36px_90px_rgba(2,6,23,0.42)]"
+        <div className="grid gap-6 xl:grid-cols-[1.7fr,0.9fr]">
+          <motion.section
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.06 }}
+            className="rounded-[34px] border border-white/10 bg-slate-950/72 p-5 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Tag label="Entry 1 / Milestone 9" tone="amber" />
-              <span className="text-xs uppercase tracking-[0.28em] text-amber-100/80">
-                Hazard puzzle live
-              </span>
-            </div>
-
-            <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-50">
-              Hazard Puzzle
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">
-              Four short levels teach RAW, load-use, branch, and forwarding
-              behavior directly on top of the five pipeline stages.
-            </p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Tag label="RAW" tone="amber" />
-              <Tag label="load-use" tone="amber" />
-              <Tag label="branch" tone="rose" />
-              <Tag label="forward" tone="cyan" />
-            </div>
-
-            <div className="mt-6 inline-flex items-center rounded-full border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.28em] text-amber-50 transition group-hover:border-amber-100/35 group-hover:bg-amber-100/15">
-              Open puzzle mode
-            </div>
-          </Link>
-
-          <Link
-            to="/traffic-control"
-            className="group rounded-[30px] border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(15,23,42,0.88))] p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] transition hover:-translate-y-0.5 hover:border-cyan-200/35 hover:shadow-[0_36px_90px_rgba(2,6,23,0.42)]"
-          >
-            <div className="flex flex-wrap gap-2">
-              <Tag label="Entry 2 / Milestone 10" tone="cyan" />
-            </div>
-            <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-50">
-              Pipeline Traffic Control
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-slate-300">
-              A lightweight dispatch game that turns hold, advance, and flush
-              into direct player controls without changing the CPU core or the
-              trace schema.
-            </p>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  Controls
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+                  动态预览
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-200">
-                  Hold, advance, and flush become direct player actions on top
-                  of the pipeline stages.
+                <p className="mt-2 text-2xl font-semibold text-slate-50">
+                  {activeScene?.subtitle ?? "载入中"}
                 </p>
               </div>
-              <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  Shared stack
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-200">
-                  Same JSONL, same parser, same stage theme, and no CPU core
-                  changes required.
-                </p>
-              </div>
-            </div>
 
-            <div className="mt-6 inline-flex items-center rounded-full border border-cyan-200/25 bg-cyan-200/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-50 transition group-hover:border-cyan-100/35 group-hover:bg-cyan-100/15">
-              Open traffic control
-            </div>
-          </Link>
-        </motion.section>
-
-        <div className="grid gap-6 xl:grid-cols-[340px,1fr]">
-          <motion.div
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.35, delay: 0.05 }}
-            className="space-y-6"
-          >
-            <Panel
-              title="Trace sources"
-              description="Load a checked-in sample or upload any existing pipeline JSONL file."
-            >
-              <div className="space-y-4">
-                <label className="block space-y-2">
-                  <span className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                    Sample trace
-                  </span>
-                  <select
-                    value={selectedSampleId}
-                    onChange={(event) => setSelectedSampleId(event.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20"
+              <div className="flex flex-wrap gap-2">
+                {scenePool.map((scene, index) => (
+                  <button
+                    key={scene.id}
+                    type="button"
+                    onClick={() => setSceneIndex(index)}
+                    className={`rounded-full border px-3 py-2 text-sm transition ${
+                      activeScene?.id === scene.id
+                        ? "border-cyan-300/35 bg-cyan-300/12 text-cyan-50"
+                        : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/8"
+                    }`}
                   >
-                    {sampleTraceOptions.map((sample) => (
-                      <option key={sample.id} value={sample.id}>
-                        {sample.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => setSampleRevision((value) => value + 1)}
-                  className="w-full rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/15"
-                >
-                  Reload sample
-                </button>
-
-                <label className="block space-y-2">
-                  <span className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                    Upload trace
-                  </span>
-                  <input
-                    type="file"
-                    accept=".jsonl,.txt"
-                    onChange={onTraceUpload}
-                    className="block w-full rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-900"
-                  />
-                </label>
-
-                <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                    Current source
-                  </p>
-                  <p className="mt-3 text-sm font-medium text-slate-100">
-                    {sourceLabel}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    {sampleTraceOptions.find((sample) => sample.id === selectedSampleId)
-                      ?.summary ?? "Uploaded trace"}
-                  </p>
-                </div>
-              </div>
-            </Panel>
-
-            <Panel
-              title="Milestone 9 hook"
-              description="Typed extension points for the hazard lesson puzzle."
-            >
-              <ul className="space-y-3 text-sm leading-6 text-slate-300">
-                {hazardLessonContractNotes.map((note) => (
-                  <li
-                    key={note}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                  >
-                    {note}
-                  </li>
+                    {scene.title}
+                  </button>
                 ))}
-              </ul>
-            </Panel>
+              </div>
+            </div>
 
-            <Panel
-              title="Milestone 10 hook"
-              description="Typed frame and action contracts for the traffic control game."
-            >
-              <ul className="space-y-3 text-sm leading-6 text-slate-300">
-                {trafficGameContractNotes.map((note) => (
-                  <li
-                    key={note}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                  >
-                    {note}
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          </motion.div>
+            {isLoading ? (
+              <div className="rounded-[28px] border border-white/10 bg-white/5 p-10 text-center text-sm text-slate-300">
+                正在载入流水线示例…
+              </div>
+            ) : error ? (
+              <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 p-10 text-center text-sm text-rose-100">
+                {error}
+              </div>
+            ) : activeStep ? (
+              <PipelineStageCanvas
+                step={activeStep}
+                previousStep={previousStep}
+                stageHighlights={activeScene.stageHighlights}
+                flowHints={activeScene.flowHints}
+                snapshotLabel="首页预览"
+                badgeLabel={activeScene.badge}
+                pulseTone={activeScene.pulseTone}
+                hazardLabel={activeScene.mode === "hazard" ? "讲解模式" : "交通模式"}
+                showRegisters={false}
+              />
+            ) : (
+              <div className="rounded-[28px] border border-white/10 bg-white/5 p-10 text-center text-sm text-slate-300">
+                当前没有可用的示例画面。
+              </div>
+            )}
+          </motion.section>
 
-          <motion.div
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
+          <motion.aside
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.1 }}
-            className="space-y-6"
+            className="grid gap-5"
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Panel title="Program" className="bg-white/5">
-                <p className="text-2xl font-semibold text-slate-50">
-                  {trace?.meta?.program ?? "-"}
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  {trace?.meta?.pipeline_mode ? "Pipeline trace" : "Single-step trace"}
-                </p>
-              </Panel>
-              <Panel title="Current cycle" className="bg-white/5">
-                <p className="text-2xl font-semibold text-slate-50">
-                  {currentStep?.pipeline?.cycle ?? "-"}
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Step {currentStep?.step ?? "-"}
-                </p>
-              </Panel>
-              <Panel title="Instruction" className="bg-white/5">
-                <p className="text-2xl font-semibold text-slate-50">
-                  {currentStep?.op ?? "-"}
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  PC {currentStep?.pc ?? "-"}
-                </p>
-              </Panel>
-              <Panel title="Trace length" className="bg-white/5">
-                <p className="text-2xl font-semibold text-slate-50">
-                  {trace?.steps.length ?? 0}
-                </p>
-                <p className="mt-2 text-sm text-slate-300">
-                  Summary exit {trace?.summary?.exit_code ?? "-"}
-                </p>
-              </Panel>
-            </div>
-
-            <Panel
-              title="Pipeline stage"
-              description="A minimum Pixi-based visualization of IF / ID / EX / MEM / WB for the selected cycle."
+            <Link
+              to="/hazard-puzzle"
+              onMouseEnter={() => setPreviewMode("hazard")}
+              onMouseLeave={() => setPreviewMode("all")}
+              className="group rounded-[34px] border border-amber-300/22 bg-[linear-gradient(145deg,rgba(251,191,36,0.14),rgba(15,23,42,0.92))] p-6 shadow-[0_30px_90px_rgba(2,6,23,0.34)] transition duration-200 hover:-translate-y-1 hover:border-amber-200/45 hover:shadow-[0_36px_100px_rgba(2,6,23,0.42)]"
             >
-              {isLoading ? (
-                <div className="rounded-[24px] border border-white/10 bg-white/5 p-8 text-center text-sm text-slate-300">
-                  Loading trace...
-                </div>
-              ) : error ? (
-                <div className="rounded-[24px] border border-rose-400/20 bg-rose-400/10 p-8 text-center text-sm text-rose-100">
-                  {error}
-                </div>
-              ) : currentStep ? (
-                <div className="space-y-5">
-                  <PipelineStageCanvas step={currentStep} />
+              <div className="flex items-center justify-between gap-4">
+                <span className="rounded-full border border-amber-300/28 bg-amber-300/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-amber-50">
+                  模式一
+                </span>
+                <span className="text-xs uppercase tracking-[0.28em] text-amber-100/80">
+                  讲解 / 关卡 / 判断
+                </span>
+              </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {currentTags.map((tag) => (
-                      <Tag key={tag.label} label={tag.label} tone={tag.tone} />
-                    ))}
-                  </div>
+              <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-50">
+                Hazard 解谜
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-slate-200">
+                看哪一级在等数据，看该停、该旁路，还是该冲刷。
+              </p>
 
-                  <div className="grid gap-3 sm:grid-cols-[auto,1fr,auto] sm:items-center">
-                    <button
-                      type="button"
-                      onClick={() => goToStep(stepIndex - 1)}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/10"
-                    >
-                      Previous cycle
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.max((trace?.steps.length ?? 1) - 1, 0)}
-                      value={stepIndex}
-                      onChange={(event) => goToStep(Number(event.target.value))}
-                      className="w-full accent-cyan-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => goToStep(stepIndex + 1)}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/10"
-                    >
-                      Next cycle
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-[24px] border border-white/10 bg-white/5 p-8 text-center text-sm text-slate-300">
-                  No trace loaded yet.
-                </div>
-              )}
-            </Panel>
-
-            <AnimatePresence mode="wait">
-              {currentStep ? (
-                <motion.div
-                  key={`${sourceLabel}-${currentStep.step}`}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.24 }}
-                  className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]"
-                >
-                  <Panel
-                    title="Cycle inspector"
-                    description="Mirrors the existing trace fields without changing the JSONL schema."
+              <div className="mt-5 flex flex-wrap gap-2">
+                {["RAW", "旁路", "暂停", "冲刷"].map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-amber-200/20 bg-amber-200/10 px-3 py-1.5 text-sm text-amber-50"
                   >
-                    <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Raw
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">{currentStep.raw}</dd>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Next PC
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">
-                          {currentStep.next_pc ?? "-"}
-                        </dd>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Registers
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">
-                          {formatChangeSet(currentStep)}
-                        </dd>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Branch flag
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">
-                          {currentStep.branched === null || currentStep.branched === undefined
-                            ? "-"
-                            : String(currentStep.branched)}
-                        </dd>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:col-span-2">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Memory write
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">
-                          {formatUnknown(currentStep.mem_write)}
-                        </dd>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:col-span-2">
-                        <dt className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          UART payload
-                        </dt>
-                        <dd className="mt-2 text-sm text-slate-100">
-                          {formatUnknown(currentStep.uart)}
-                        </dd>
-                      </div>
-                    </dl>
-                  </Panel>
+                    {item}
+                  </span>
+                ))}
+              </div>
 
-                  <Panel
-                    title="Trace compatibility"
-                    description="The browser parser accepts the same record categories as the existing Python viewer."
+              <div className="mt-7 inline-flex items-center rounded-full border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-sm font-medium text-amber-50 transition group-hover:border-amber-100/45 group-hover:bg-amber-100/18">
+                进入解谜
+              </div>
+            </Link>
+
+            <Link
+              to="/traffic-control"
+              onMouseEnter={() => setPreviewMode("traffic")}
+              onMouseLeave={() => setPreviewMode("all")}
+              className="group rounded-[34px] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(15,23,42,0.92))] p-6 shadow-[0_30px_90px_rgba(2,6,23,0.34)] transition duration-200 hover:-translate-y-1 hover:border-cyan-200/45 hover:shadow-[0_36px_100px_rgba(2,6,23,0.42)]"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <span className="rounded-full border border-cyan-300/28 bg-cyan-300/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-50">
+                  模式二
+                </span>
+                <span className="text-xs uppercase tracking-[0.28em] text-cyan-100/80">
+                  交通 / 调度 / 互动
+                </span>
+              </div>
+
+              <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-50">
+                Traffic Control
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-slate-200">
+                把指令当成车辆，把放行、暂停、冲刷变成路口控制动作。
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {["放行", "红灯", "清场", "点车查看"].map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-sm text-cyan-50"
                   >
-                    <div className="space-y-3 text-sm leading-6 text-slate-300">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        meta {"->"} program, base, entry, max steps, pipeline flag
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        step {"->"} instruction data plus optional pipeline snapshot
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        summary {"->"} final PC, last instruction, running flag, exit code
-                      </div>
-                    </div>
-                  </Panel>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-          </motion.div>
+                    {item}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-7 inline-flex items-center rounded-full border border-cyan-200/25 bg-cyan-200/10 px-4 py-2 text-sm font-medium text-cyan-50 transition group-hover:border-cyan-100/45 group-hover:bg-cyan-100/18">
+                进入调度
+              </div>
+            </Link>
+          </motion.aside>
         </div>
       </div>
     </div>

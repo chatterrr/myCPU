@@ -26,6 +26,8 @@ export interface HazardPuzzleLevel {
   concept: string;
   traceSampleId: string;
   focusStepIndex: number;
+  previewStartStep: number;
+  previewEndStep: number;
   focusStage: PipelineStageKey;
   briefing: string;
   prompt: string;
@@ -34,6 +36,7 @@ export interface HazardPuzzleLevel {
   successText: string;
   failureText: string;
   previewHighlights: HazardStageHighlight[];
+  previewFlows: HazardFlowHint[];
   solutionHighlights: HazardStageHighlight[];
   solutionFlows: HazardFlowHint[];
 }
@@ -59,6 +62,12 @@ export function getHazardPuzzlePreviewHighlights(
   return level.previewHighlights;
 }
 
+export function getHazardPuzzlePreviewFlows(
+  level: HazardPuzzleLevel
+): HazardFlowHint[] {
+  return level.previewFlows;
+}
+
 export function buildHazardPuzzleFeedback(
   level: HazardPuzzleLevel,
   choiceId: HazardChoiceId
@@ -82,22 +91,28 @@ export const hazardPuzzleLevels: HazardPuzzleLevel[] = [
     concept: "RAW",
     traceSampleId: "pipeline-raw",
     focusStepIndex: 3,
+    previewStartStep: 1,
+    previewEndStep: 4,
     focusStage: "id",
-    briefing: "ADD_W 还没进 EX，就已经盯上前两条还没写回的结果。",
-    prompt: "这张快照里，核心问题属于哪一种 hazard？",
+    briefing: "译码想立刻读到前两条结果，但数据还没落地。",
+    prompt: "这一拍先看什么？",
     choices: [
-      { id: "raw", label: "RAW", detail: "年轻指令读取前一条尚未写回的结果" },
-      { id: "control", label: "Control", detail: "分支改写了 PC 方向" },
-      { id: "steady", label: "No hazard", detail: "数据与控制都很安全" }
+      { id: "raw", label: "RAW", detail: "前面的结果还没写回。" },
+      { id: "control", label: "控制", detail: "PC 方向改变了。" },
+      { id: "steady", label: "继续", detail: "这拍没有风险。" }
     ],
     correctChoiceId: "raw",
-    successText: "这是典型 RAW 依赖链，ADD_W 同时等着 r2 和 r1。",
-    failureText: "这里没有改 PC；真正的问题是 ADD_W 正在追前两条尚未落地的结果。",
-    previewHighlights: [{ stage: "id", label: "focus", tone: "emerald" }],
+    successText: "对。ID 正在追前面的结果，这是典型 RAW 依赖。",
+    failureText: "这里不是分支改向，问题在于 ID 正在等旧结果。",
+    previewHighlights: [{ stage: "id", label: "焦点", tone: "emerald" }],
+    previewFlows: [
+      { fromStage: "mem", toStage: "id", label: "r1", tone: "amber", lane: 0 },
+      { fromStage: "ex", toStage: "id", label: "r2", tone: "amber", lane: 1 }
+    ],
     solutionHighlights: [
-      { stage: "id", label: "RAW sink", tone: "amber" },
-      { stage: "ex", label: "src r2", tone: "amber" },
-      { stage: "mem", label: "src r1", tone: "amber" }
+      { stage: "id", label: "consumer", tone: "amber" },
+      { stage: "ex", label: "r2", tone: "amber" },
+      { stage: "mem", label: "r1", tone: "amber" }
     ],
     solutionFlows: [
       { fromStage: "mem", toStage: "id", label: "r1", tone: "amber", lane: 0 },
@@ -106,27 +121,33 @@ export const hazardPuzzleLevels: HazardPuzzleLevel[] = [
   },
   {
     id: "forward-bridge",
-    title: "L2. Forward 桥接",
-    shortTitle: "Forward",
+    title: "L2. 旁路桥接",
+    shortTitle: "旁路",
     concept: "Forward",
     traceSampleId: "pipeline-forward",
     focusStepIndex: 5,
+    previewStartStep: 3,
+    previewEndStep: 6,
     focusStage: "ex",
-    briefing: "SUB_W 已在 EX，两个源操作数却还漂在前面的流水级里。",
-    prompt: "为了不停顿，流水线此刻应该给 SUB_W 什么帮助？",
+    briefing: "EX 已经拿到旧结果的旁路输入，这拍可以继续走。",
+    prompt: "这拍该做什么？",
     choices: [
-      { id: "forward", label: "Forward", detail: "把较新的结果直接旁路进 EX" },
-      { id: "stall_bubble", label: "Stall + bubble", detail: "冻结前端并塞一个空泡" },
-      { id: "flush", label: "Flush", detail: "把更年轻的指令整批冲掉" }
+      { id: "forward", label: "旁路", detail: "把新结果直接送进 EX。" },
+      { id: "stall_bubble", label: "暂停", detail: "前端先停一下再说。" },
+      { id: "flush", label: "冲刷", detail: "把年轻指令清掉。" }
     ],
     correctChoiceId: "forward",
-    successText: "对，这一拍靠 MEM 和 WB 的结果旁路进 EX，SUB_W 不需要停。",
-    failureText: "这里没有 load-use 缺口，也不是分支改向；最快的做法是直接 forward。",
-    previewHighlights: [{ stage: "ex", label: "focus", tone: "emerald" }],
+    successText: "对。旁路已经成立，EX 不用停车。",
+    failureText: "这里不是 load-use，也不是错路，直接旁路最合适。",
+    previewHighlights: [{ stage: "ex", label: "焦点", tone: "emerald" }],
+    previewFlows: [
+      { fromStage: "mem", toStage: "ex", label: "r4", tone: "cyan", lane: 0 },
+      { fromStage: "wb", toStage: "ex", label: "r2", tone: "cyan", lane: 1 }
+    ],
     solutionHighlights: [
       { stage: "ex", label: "consumer", tone: "cyan" },
-      { stage: "mem", label: "forward r4", tone: "cyan" },
-      { stage: "wb", label: "forward r2", tone: "cyan" }
+      { stage: "mem", label: "r4", tone: "emerald" },
+      { stage: "wb", label: "r2", tone: "emerald" }
     ],
     solutionFlows: [
       { fromStage: "mem", toStage: "ex", label: "r4", tone: "cyan", lane: 0 },
@@ -136,32 +157,43 @@ export const hazardPuzzleLevels: HazardPuzzleLevel[] = [
   {
     id: "loaduse-brake",
     title: "L3. Load-use 刹车",
-    shortTitle: "Load-use",
+    shortTitle: "暂停",
     concept: "Load-use",
     traceSampleId: "pipeline-loaduse",
     focusStepIndex: 2,
+    previewStartStep: 0,
+    previewEndStep: 4,
     focusStage: "id",
-    briefing: "LD_W 还在路上，下一条 ADDI_W 就想马上吃到加载结果。",
-    prompt: "这时最保守、也最正确的教学动作是什么？",
+    briefing: "load 结果还在路上，译码现在读会太早。",
+    prompt: "这拍该怎么控？",
     choices: [
-      { id: "forward", label: "Forward", detail: "像 ALU hazard 一样直接旁路" },
-      { id: "stall_bubble", label: "Stall + bubble", detail: "先停 IF / ID，再在 EX 插入空泡" },
-      { id: "flush", label: "Flush", detail: "把 IF / ID 清空重新抓取" }
+      { id: "forward", label: "旁路", detail: "像普通 ALU hazard 一样直接送。" },
+      { id: "stall_bubble", label: "暂停", detail: "IF / ID 顶住，EX 插入气泡。" },
+      { id: "flush", label: "冲刷", detail: "把 IF / ID 全部清掉。" }
     ],
     correctChoiceId: "stall_bubble",
-    successText: "没错，load-use 要先顶住 IF / ID，再给 EX 一个 bubble 等数据回来。",
-    failureText: "加载结果这拍还没到位，硬 forward 不安全；这里该 stall，并在 EX 插 bubble。",
-    previewHighlights: [{ stage: "id", label: "focus", tone: "emerald" }],
+    successText: "对。先停住 IF / ID，再给 EX 插一个 bubble。",
+    failureText: "load 结果这拍还没到，硬旁路不安全，也不该直接冲刷。",
+    previewHighlights: [{ stage: "id", label: "焦点", tone: "emerald" }],
+    previewFlows: [
+      {
+        fromStage: "ex",
+        toStage: "id",
+        label: "load 未到",
+        tone: "amber",
+        lane: 0
+      }
+    ],
     solutionHighlights: [
-      { stage: "if", label: "stall", tone: "amber" },
-      { stage: "id", label: "stall", tone: "amber" },
+      { stage: "if", label: "暂停", tone: "amber" },
+      { stage: "id", label: "暂停", tone: "amber" },
       { stage: "ex", label: "bubble", tone: "amber" }
     ],
     solutionFlows: [
       {
         fromStage: "ex",
         toStage: "id",
-        label: "load not ready",
+        label: "load 未到",
         tone: "amber",
         lane: 0
       }
@@ -169,23 +201,29 @@ export const hazardPuzzleLevels: HazardPuzzleLevel[] = [
   },
   {
     id: "branch-sweep",
-    title: "L4. Branch 冲刷",
-    shortTitle: "Flush",
+    title: "L4. 分支冲刷",
+    shortTitle: "冲刷",
     concept: "Branch",
     traceSampleId: "pipeline-branch",
     focusStepIndex: 4,
+    previewStartStep: 2,
+    previewEndStep: 5,
     focusStage: "ex",
-    briefing: "BEQ 已在 EX 判定 taken，前面那两条年轻指令已经走错路了。",
-    prompt: "判定成立后，最直接的图形动作应该是什么？",
+    briefing: "EX 判定分支成立，前面的年轻指令已经走错路。",
+    prompt: "现在该按哪一个？",
     choices: [
-      { id: "forward", label: "Forward", detail: "继续把旧值旁路给新指令" },
-      { id: "stall_bubble", label: "Stall + bubble", detail: "先停住，再慢慢恢复" },
-      { id: "flush", label: "Flush", detail: "把 IF / ID 的错路指令立刻冲掉" }
+      { id: "forward", label: "旁路", detail: "继续把旧值送下去。" },
+      { id: "stall_bubble", label: "暂停", detail: "先停住，等等看。" },
+      { id: "flush", label: "冲刷", detail: "把 IF / ID 错路立即清掉。" }
     ],
     correctChoiceId: "flush",
-    successText: "对，taken branch 会把更年轻的 IF / ID 直接 flush 掉。",
-    failureText: "这里已经不是等数据，而是 PC 已改道；错路上的 IF / ID 必须马上 flush。",
-    previewHighlights: [{ stage: "ex", label: "focus", tone: "emerald" }],
+    successText: "对。分支成立后，年轻指令必须立刻冲刷。",
+    failureText: "这里不是等数据，而是 PC 已改向，错路要马上清掉。",
+    previewHighlights: [{ stage: "ex", label: "焦点", tone: "emerald" }],
+    previewFlows: [
+      { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
+      { fromStage: "ex", toStage: "if", label: "flush", tone: "rose", lane: 1 }
+    ],
     solutionHighlights: [
       { stage: "ex", label: "taken", tone: "rose" },
       { stage: "if", label: "flush", tone: "rose" },

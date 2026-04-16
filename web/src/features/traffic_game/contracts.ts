@@ -36,9 +36,9 @@ export interface TrafficGameChoiceDescriptor extends TrafficGameAction {
 }
 
 export const trafficActionLabels: Record<TrafficGameActionType, string> = {
-  hold: "Hold",
-  advance: "Advance",
-  flush: "Flush"
+  hold: "暂停",
+  advance: "放行",
+  flush: "冲刷"
 };
 
 export const trafficActionTones: Record<TrafficGameActionType, HazardHintTone> = {
@@ -48,8 +48,8 @@ export const trafficActionTones: Record<TrafficGameActionType, HazardHintTone> =
 };
 
 export const trafficGameContractNotes = [
-  "Input: one pipeline snapshot per frame plus stage-control affordances.",
-  "Action model: hold, advance, or flush on a named pipeline stage.",
-  "Output: scored frame updates can layer on top of the current Pixi stage.",
-  "M10 route: action-driven feedback reuses the same highlight and flow primitives from the hazard lesson."
+  "输入：一拍流水线快照，以及当前可控制的 stage。",
+  "动作：对指定 stage 执行放行、暂停或冲刷。",
+  "输出：沿用高亮、流向和短反馈，不改 trace 协议。",
+  "页面：交通调度台只换交互映射，不脱离原有流水线逻辑。"
 ];

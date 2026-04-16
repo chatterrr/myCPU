@@ -11,27 +11,27 @@ export interface SampleTraceOption {
 export const sampleTraceOptions: SampleTraceOption[] = [
   {
     id: "pipeline-raw",
-    label: "RAW chain",
+    label: "RAW 链",
     path: "traces/pipeline-raw.jsonl",
-    summary: "Shows a tight RAW dependency chain before the pipeline reacts."
+    summary: "连续 RAW 依赖，适合观察谁在等数据。"
   },
   {
     id: "pipeline-forward",
-    label: "Forward bridge",
+    label: "旁路桥接",
     path: "traces/pipeline-forward.jsonl",
-    summary: "Shows dual forwarding paths that keep SUB_W moving in EX."
+    summary: "双路旁路同时成立，EX 可以继续推进。"
   },
   {
     id: "pipeline-loaduse",
-    label: "Load-use stall",
+    label: "Load-use 暂停",
     path: "traces/pipeline-loaduse.jsonl",
-    summary: "Shows the classic RAW stall and inserted EX bubble."
+    summary: "展示经典 load-use 暂停和 EX 空泡。"
   },
   {
     id: "pipeline-branch",
-    label: "Branch flush",
+    label: "分支冲刷",
     path: "traces/pipeline-branch.jsonl",
-    summary: "Shows IF and ID flush behavior after a taken branch."
+    summary: "分支成立后，IF 和 ID 被立即冲刷。"
   }
 ];
 
