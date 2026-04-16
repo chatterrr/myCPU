@@ -184,9 +184,9 @@ export function HomeRoute() {
                 myCPU Pipeline Web Frontend
               </h1>
               <p className="max-w-3xl text-base leading-7 text-slate-300 sm:text-lg">
-                A standalone trace-driven frontend that replaces the Python
-                viewer as the base for future hazard lessons and pipeline
-                traffic gameplay.
+                A trace-driven frontend that keeps the pipeline viewer, the
+                hazard lesson, and the new traffic-control game on one shared
+                visual stack.
               </p>
             </div>
           </div>
@@ -196,17 +196,17 @@ export function HomeRoute() {
                 Data path
               </p>
               <p className="mt-3 text-sm leading-6 text-slate-200">
-                mycpu.exe trace JSONL feeds the browser parser, then the Pixi
+                `mycpu.exe` trace JSONL feeds the browser parser, then the Pixi
                 stage renders IF / ID / EX / MEM / WB.
               </p>
             </div>
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
               <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                Future entries
+                Shared base
               </p>
               <p className="mt-3 text-sm leading-6 text-slate-200">
-                Hazard lesson puzzle and traffic control game both extend the
-                same TraceDocument and cycle inspector.
+                Hazard puzzle and traffic control both extend the same
+                `TraceDocument`, stage board, and cycle inspector.
               </p>
             </div>
           </div>
@@ -223,18 +223,18 @@ export function HomeRoute() {
             className="group rounded-[30px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(251,191,36,0.15),rgba(15,23,42,0.88))] p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] transition hover:-translate-y-0.5 hover:border-amber-200/35 hover:shadow-[0_36px_90px_rgba(2,6,23,0.42)]"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Tag label="入口 1 / Milestone 9" tone="amber" />
+              <Tag label="Entry 1 / Milestone 9" tone="amber" />
               <span className="text-xs uppercase tracking-[0.28em] text-amber-100/80">
                 Hazard puzzle live
               </span>
             </div>
 
             <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-50">
-              Hazard 解谜
+              Hazard Puzzle
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">
-              用 4 个短关卡讲清 RAW、load-use、branch hazard，直接把
-              stall、bubble、forward、flush 画在 5 级流水线上。
+              Four short levels teach RAW, load-use, branch, and forwarding
+              behavior directly on top of the five pipeline stages.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -249,38 +249,47 @@ export function HomeRoute() {
             </div>
           </Link>
 
-          <div className="rounded-[30px] border border-white/10 bg-slate-950/75 p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] backdrop-blur">
+          <Link
+            to="/traffic-control"
+            className="group rounded-[30px] border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(15,23,42,0.88))] p-6 shadow-[0_28px_80px_rgba(2,6,23,0.35)] transition hover:-translate-y-0.5 hover:border-cyan-200/35 hover:shadow-[0_36px_90px_rgba(2,6,23,0.42)]"
+          >
             <div className="flex flex-wrap gap-2">
-              <Tag label="入口 2 / Foundation" tone="cyan" />
+              <Tag label="Entry 2 / Milestone 10" tone="cyan" />
             </div>
-            <h2 className="mt-5 text-2xl font-semibold tracking-tight text-slate-50">
-              Trace 舞台仍然保留
+            <h2 className="mt-5 text-3xl font-semibold tracking-tight text-slate-50">
+              Pipeline Traffic Control
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-300">
-              下面这块最小 pipeline viewer 继续作为底座存在。M9 的解谜模式和
-              后续 M10 的 traffic game 都复用同一份 TraceDocument 与
-              cycle inspector。
+              A lightweight dispatch game that turns hold, advance, and flush
+              into direct player controls without changing the CPU core or the
+              trace schema.
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  Reuse
+                  Controls
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-200">
-                  同一份 JSONL、同一份 parser、同一套 stage 顺序。
+                  Hold, advance, and flush become direct player actions on top
+                  of the pipeline stages.
                 </p>
               </div>
               <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  Why it matters
+                  Shared stack
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-200">
-                  保证课程演示和 trace 工作流不分叉，不需要改 CPU 协议。
+                  Same JSONL, same parser, same stage theme, and no CPU core
+                  changes required.
                 </p>
               </div>
             </div>
-          </div>
+
+            <div className="mt-6 inline-flex items-center rounded-full border border-cyan-200/25 bg-cyan-200/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-50 transition group-hover:border-cyan-100/35 group-hover:bg-cyan-100/15">
+              Open traffic control
+            </div>
+          </Link>
         </motion.section>
 
         <div className="grid gap-6 xl:grid-cols-[340px,1fr]">

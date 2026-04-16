@@ -144,11 +144,15 @@ function describeStage(step: TraceStepRecord, stage: PipelineStageKey) {
 export function HazardPuzzleBoard({
   step,
   stageHighlights,
-  flowHints
+  flowHints,
+  snapshotLabel = "Focused snapshot",
+  badgeLabel = "One cycle, one puzzle move"
 }: {
   step: TraceStepRecord;
   stageHighlights: HazardStageHighlight[];
   flowHints: HazardFlowHint[];
+  snapshotLabel?: string;
+  badgeLabel?: string;
 }) {
   if (!step.pipeline) {
     return (
@@ -178,14 +182,14 @@ export function HazardPuzzleBoard({
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-              Focused snapshot
+              {snapshotLabel}
             </p>
             <p className="mt-2 text-lg font-semibold text-slate-50">
               Cycle {step.pipeline.cycle}
             </p>
           </div>
           <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-slate-300">
-            One cycle, one puzzle move
+            {badgeLabel}
           </div>
         </div>
 
