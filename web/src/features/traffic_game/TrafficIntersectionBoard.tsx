@@ -1,231 +1,223 @@
 import { motion } from "motion/react";
-import type { PipelineStageKey, TraceStepRecord } from "@/features/trace/types";
+import type {
+  DispatchPiece,
+  DispatchSession,
+  ResolvedDispatchBlueprint
+} from "@/features/traffic_game/contracts";
 import {
-  findTokenOriginStage,
-  getPipelineTokens,
-  getStageChineseLabel,
-  type PipelineToken
-} from "@/features/pipeline/visuals";
+  dispatchBoardHeight,
+  dispatchBoardWidth,
+  getGhostRow,
+  getPieceCells
+} from "@/features/traffic_game/engine";
 
-const sceneMetrics = {
-  width: 1180,
-  height: 760,
-  laneWidth: 180,
-  tokenWidth: 160,
-  tokenHeight: 78
-} as const;
+const cellSize = 46;
 
-const stagePositions: Record<PipelineStageKey, { x: number; y: number }> = {
-  if: { x: 590, y: 120 },
-  id: { x: 245, y: 330 },
-  ex: { x: 590, y: 330 },
-  mem: { x: 935, y: 330 },
-  wb: { x: 590, y: 560 }
+const pieceClasses: Record<string, string> = {
+  alu: "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(110,231,183,0.92),rgba(6,78,59,0.9))] shadow-[0_0_28px_rgba(16,185,129,0.42)]",
+  forward:
+    "border-cyan-200/80 bg-[linear-gradient(180deg,rgba(103,232,249,0.94),rgba(8,47,73,0.92))] shadow-[0_0_28px_rgba(34,211,238,0.46)]",
+  "load-use":
+    "border-amber-200/85 bg-[linear-gradient(180deg,rgba(253,224,71,0.94),rgba(120,53,15,0.9))] shadow-[0_0_32px_rgba(251,191,36,0.44)]",
+  "branch-flush":
+    "border-rose-200/85 bg-[linear-gradient(180deg,rgba(253,164,175,0.94),rgba(136,19,55,0.92))] shadow-[0_0_32px_rgba(251,113,133,0.44)]"
 };
 
-const stageZoneClasses: Record<string, string> = {
-  if: "border-cyan-300/30 bg-cyan-950/30 text-cyan-50",
-  id: "border-amber-300/28 bg-amber-950/28 text-amber-50",
-  ex: "border-emerald-300/28 bg-emerald-950/28 text-emerald-50",
-  mem: "border-sky-300/28 bg-sky-950/28 text-sky-50",
-  wb: "border-lime-300/28 bg-lime-950/24 text-lime-50"
-};
-
-const carClasses: Record<string, string> = {
-  fetch:
-    "border-cyan-300/45 bg-[linear-gradient(180deg,rgba(34,211,238,0.25),rgba(8,47,73,0.22))] text-cyan-50",
-  occupied:
-    "border-emerald-300/45 bg-[linear-gradient(180deg,rgba(16,185,129,0.25),rgba(6,78,59,0.22))] text-emerald-50",
-  stalled:
-    "border-amber-300/50 bg-[linear-gradient(180deg,rgba(251,191,36,0.3),rgba(120,53,15,0.22))] text-amber-50",
-  flushed:
-    "border-rose-300/55 bg-[linear-gradient(180deg,rgba(251,113,133,0.34),rgba(136,19,55,0.22))] text-rose-50",
-  bubble:
-    "border-amber-200/50 bg-[linear-gradient(180deg,rgba(250,204,21,0.28),rgba(120,53,15,0.18))] text-amber-50"
-};
-
-function getTokenPosition(stage: PipelineStageKey) {
-  const center = stagePositions[stage];
-
-  return {
-    x: center.x - sceneMetrics.tokenWidth / 2,
-    y: center.y - sceneMetrics.tokenHeight / 2
-  };
+function findBlueprint(
+  blueprints: ResolvedDispatchBlueprint[],
+  blueprintId: string
+) {
+  return blueprints.find((blueprint) => blueprint.id === blueprintId) ?? null;
 }
 
-function getStagePrompt(stage: PipelineStageKey) {
-  switch (stage) {
-    case "if":
-      return "入口控制点";
-    case "id":
-      return "等待区控制点";
-    case "ex":
-      return "路口控制点";
-    case "mem":
-      return "访存通道";
-    case "wb":
-      return "回写出口";
-  }
-}
+function renderPieceCell({
+  key,
+  row,
+  col,
+  piece,
+  isGhost = false,
+  isSelected = false,
+  isActive = false,
+  blueprints,
+  onSelectBlock
+}: {
+  key: string;
+  row: number;
+  col: number;
+  piece: DispatchPiece;
+  isGhost?: boolean;
+  isSelected?: boolean;
+  isActive?: boolean;
+  blueprints: ResolvedDispatchBlueprint[];
+  onSelectBlock: (blockId: string) => void;
+}) {
+  const blueprint = findBlueprint(blueprints, piece.blueprintId);
 
-function renderCarLamp(token: PipelineToken) {
-  if (token.state === "stalled") {
-    return "bg-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.9)]";
+  if (!blueprint) {
+    return null;
   }
 
-  if (token.state === "flushed") {
-    return "bg-rose-300 shadow-[0_0_18px_rgba(251,113,133,0.9)]";
-  }
-
-  if (token.kind === "bubble") {
-    return "bg-amber-200 shadow-[0_0_18px_rgba(250,204,21,0.75)]";
-  }
-
-  return "bg-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.85)]";
+  return (
+    <motion.button
+      key={key}
+      type="button"
+      onClick={() => onSelectBlock(piece.id)}
+      initial={false}
+      animate={{
+        x: col * cellSize,
+        y: row * cellSize
+      }}
+      transition={{ type: "spring", stiffness: 320, damping: 24, mass: 0.45 }}
+      className={`absolute left-0 top-0 flex items-center justify-center rounded-[12px] border text-[10px] font-semibold tracking-[0.16em] text-slate-950 transition ${pieceClasses[piece.kind]} ${isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950" : ""} ${isActive ? "scale-[1.03]" : ""} ${isGhost ? "border-dashed opacity-40 shadow-none" : "hover:brightness-110"}`}
+      style={{
+        width: `${cellSize - 4}px`,
+        height: `${cellSize - 4}px`,
+        marginLeft: "2px",
+        marginTop: "2px"
+      }}
+      aria-label={`${blueprint.title} ${row},${col}`}
+    >
+      {!isGhost ? blueprint.shortLabel.slice(0, 1) : ""}
+    </motion.button>
+  );
 }
 
 export function TrafficIntersectionBoard({
-  step,
-  previousStep = null,
-  playerPosition,
-  nearbyStage,
-  focusStage,
-  selectedVehicleKey,
-  onVehicleSelect
+  session,
+  blueprints,
+  onSelectBlock,
+  className = ""
 }: {
-  step: TraceStepRecord;
-  previousStep?: TraceStepRecord | null;
-  playerPosition: { x: number; y: number };
-  nearbyStage: PipelineStageKey | null;
-  focusStage: PipelineStageKey;
-  selectedVehicleKey: string | null;
-  onVehicleSelect: (vehicleKey: string) => void;
+  session: DispatchSession;
+  blueprints: ResolvedDispatchBlueprint[];
+  onSelectBlock: (blockId: string) => void;
+  className?: string;
 }) {
-  const tokens = getPipelineTokens(step);
+  const activePiece = session.activePieceId
+    ? session.pieces[session.activePieceId] ?? null
+    : null;
+  const ghostRow = activePiece ? getGhostRow(session, blueprints) : null;
+  const ghostCells =
+    activePiece && ghostRow !== null
+      ? getPieceCells(activePiece, blueprints, { row: ghostRow })
+      : [];
 
   return (
-    <div className="overflow-x-auto">
-      <div
-        className="relative rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(16,185,129,0.08),_transparent_26%),linear-gradient(180deg,rgba(2,6,23,0.95),rgba(4,8,22,0.88))] p-5"
-        style={{ minWidth: `${sceneMetrics.width}px` }}
-      >
+    <div
+      className={`flex h-full flex-col rounded-[32px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(251,191,36,0.12),_transparent_28%),linear-gradient(180deg,rgba(1,4,12,0.98),rgba(3,7,18,0.9))] p-5 shadow-[0_36px_110px_rgba(2,6,23,0.48)] ${className}`}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+            主舞台
+          </p>
+          <p className="mt-2 text-xl font-semibold text-slate-50">
+            方块堆栈
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            "← / A 左移",
+            "→ / D 右移",
+            "↑ / W 旋转",
+            "↓ / S 加速",
+            "Space 硬降",
+            "P 暂停"
+          ].map((item) => (
+            <span
+              key={item}
+              className="rounded-full border border-white/16 bg-black/30 px-2.5 py-1.5 text-[11px] text-slate-100 shadow-[0_0_18px_rgba(255,255,255,0.04)]"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center overflow-x-auto">
         <div
-          className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,47,73,0.1),rgba(2,6,23,0.08))]"
-          style={{ height: `${sceneMetrics.height}px` }}
+          className="relative overflow-hidden rounded-[28px] border border-cyan-300/24 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.14),_transparent_32%),linear-gradient(180deg,rgba(2,6,23,1),rgba(2,6,23,0.96))] shadow-[0_0_40px_rgba(34,211,238,0.12)]"
+          style={{
+            width: `${dispatchBoardWidth * cellSize}px`,
+            height: `${dispatchBoardHeight * cellSize}px`
+          }}
         >
-          <div className="absolute left-1/2 top-0 h-full w-[180px] -translate-x-1/2 bg-slate-900/60" />
-          <div className="absolute left-0 top-1/2 h-[180px] w-full -translate-y-1/2 bg-slate-900/60" />
+          <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_36%),radial-gradient(circle_at_bottom,_rgba(253,224,71,0.08),_transparent_34%)]" />
 
-          <div className="absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 border-l border-dashed border-slate-600/60" />
-          <div className="absolute left-0 top-1/2 h-[2px] w-full -translate-y-1/2 border-t border-dashed border-slate-600/60" />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(148,163,184,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.18) 1px, transparent 1px)",
+              backgroundSize: `${cellSize}px ${cellSize}px`
+            }}
+          />
 
-          {step.pipeline?.flush.length ? (
-            <motion.div
-              key={`traffic-flush-${step.pipeline.cycle}`}
-              initial={{ opacity: 0, x: -120 }}
-              animate={{ opacity: [0, 0.85, 0], x: [0, 240, 460] }}
-              transition={{ duration: 0.9, ease: "easeOut" }}
-              className="pointer-events-none absolute left-[120px] top-[160px] h-[220px] w-[540px] rounded-full bg-[linear-gradient(90deg,rgba(244,63,94,0),rgba(244,63,94,0.18),rgba(244,63,94,0.52),rgba(244,63,94,0))] blur-md"
-            />
-          ) : null}
+          {ghostCells.map((cell, index) =>
+            activePiece
+              ? renderPieceCell({
+                  key: `ghost-${index}`,
+                  row: cell.row,
+                  col: cell.col,
+                  piece: activePiece,
+                  isGhost: true,
+                  blueprints,
+                  onSelectBlock
+                })
+              : null
+          )}
 
-          {(
-            Object.entries(stagePositions) as Array<
-              [PipelineStageKey, { x: number; y: number }]
-            >
-          ).map(([stageKey, position]) => {
-            const isNearby = nearbyStage === stageKey;
-            const isFocus = focusStage === stageKey;
+          {session.board.flatMap((row, rowIndex) =>
+            row.flatMap((cell, colIndex) => {
+              if (!cell) {
+                return [];
+              }
 
-            return (
-              <div
-                key={stageKey}
-                className={`absolute h-[104px] w-[168px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] border p-4 ${stageZoneClasses[stageKey]} ${isFocus ? "shadow-[0_0_40px_rgba(34,211,238,0.16)]" : ""} ${isNearby ? "ring-2 ring-white/25" : ""}`}
-                style={{ left: `${position.x}px`, top: `${position.y}px` }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-white/70">
-                      {stageKey.toUpperCase()}
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-white">
-                      {getStageChineseLabel(stageKey)}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-white/10 bg-black/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-white/80">
-                    {getStagePrompt(stageKey)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+              const piece = session.pieces[cell.blockId];
 
-          {tokens.map((token) => {
-            const originStage = findTokenOriginStage(token, previousStep);
-            const fromPosition = getTokenPosition(originStage);
-            const toPosition = getTokenPosition(token.stage);
-            const isSelected = selectedVehicleKey === token.instructionKey;
+              if (!piece) {
+                return [];
+              }
 
-            return (
-              <motion.button
-                key={`${token.instructionKey}-${token.stage}`}
-                type="button"
-                initial={{
-                  x: fromPosition.x,
-                  y: fromPosition.y,
-                  opacity: token.kind === "bubble" ? 0 : 0.4,
-                  scale: token.kind === "bubble" ? 0.72 : 0.95
-                }}
-                animate={{
-                  x: toPosition.x,
-                  y: toPosition.y,
-                  opacity: 1,
-                  scale: token.state === "stalled" ? [1, 1.03, 1] : 1
-                }}
-                transition={{ duration: 0.66, ease: "easeInOut" }}
-                onClick={() => onVehicleSelect(token.instructionKey)}
-                className={`absolute left-0 top-0 h-[78px] w-[160px] rounded-[22px] border p-3 text-left backdrop-blur transition hover:-translate-y-0.5 ${carClasses[token.state] ?? carClasses.occupied} ${isSelected ? "ring-2 ring-white/55 shadow-[0_0_30px_rgba(255,255,255,0.16)]" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.24em] opacity-75">
-                      {token.stage.toUpperCase()}
-                    </p>
-                    <p className="mt-2 text-lg font-semibold leading-5">
-                      {token.title}
-                    </p>
-                  </div>
-                  <span
-                    className={`mt-1 h-3.5 w-3.5 rounded-full ${renderCarLamp(token)}`}
-                  />
-                </div>
-                <p className="mt-3 truncate text-xs opacity-80">
-                  {token.pc ?? token.subtitle}
+              return renderPieceCell({
+                key: `locked-${rowIndex}-${colIndex}`,
+                row: rowIndex,
+                col: colIndex,
+                piece,
+                isSelected: session.selectedBlockId === piece.id,
+                blueprints,
+                onSelectBlock
+              });
+            })
+          )}
+
+          {activePiece
+            ? getPieceCells(activePiece, blueprints).map((cell, index) =>
+                renderPieceCell({
+                  key: `active-${activePiece.id}-${index}`,
+                  row: cell.row,
+                  col: cell.col,
+                  piece: activePiece,
+                  isSelected: session.selectedBlockId === activePiece.id,
+                  isActive: true,
+                  blueprints,
+                  onSelectBlock
+                })
+              )
+            : null}
+
+          {(session.paused || session.gameOver) ? (
+            <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-slate-950/72 backdrop-blur-sm">
+              <div className="rounded-[24px] border border-rose-300/24 bg-black/45 px-8 py-6 text-center shadow-[0_0_36px_rgba(251,113,133,0.16)]">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                  {session.gameOver ? "本局结束" : "已暂停"}
                 </p>
-              </motion.button>
-            );
-          })}
-
-          <motion.div
-            animate={{ x: playerPosition.x, y: playerPosition.y }}
-            transition={{ type: "spring", stiffness: 260, damping: 26, mass: 0.6 }}
-            className="absolute left-0 top-0 h-10 w-10 rounded-full border border-white/40 bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.9),rgba(34,211,238,0.6),rgba(14,116,144,0.95))] shadow-[0_0_28px_rgba(34,211,238,0.45)]"
-          >
-            <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950/80" />
-          </motion.div>
-
-          {nearbyStage ? (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="absolute rounded-[20px] border border-cyan-300/25 bg-slate-950/88 px-4 py-3 text-sm text-slate-100 shadow-[0_20px_40px_rgba(2,6,23,0.38)]"
-              style={{
-                left: `${stagePositions[nearbyStage].x + 96}px`,
-                top: `${stagePositions[nearbyStage].y - 32}px`
-              }}
-            >
-              靠近 {getStagePrompt(nearbyStage)}
-            </motion.div>
+                <p className="mt-3 text-3xl font-semibold text-slate-50">
+                  {session.gameOver ? "堆顶封口" : "暂停中"}
+                </p>
+              </div>
+            </div>
           ) : null}
         </div>
       </div>

@@ -43,13 +43,13 @@ const homePreviewScenes: PreviewScene[] = [
     traceSampleId: "pipeline-raw",
     stepIndex: 3,
     title: "RAW 阴影",
-    subtitle: "译码在等前面两条指令的结果落地。",
+    subtitle: "译码段在等前面的结果落地。",
     badge: "识别依赖",
     pulseTone: "amber",
     stageHighlights: [
       { stage: "id", label: "等待", tone: "amber" },
-      { stage: "ex", label: "producer", tone: "amber" },
-      { stage: "mem", label: "producer", tone: "amber" }
+      { stage: "ex", label: "前指令", tone: "amber" },
+      { stage: "mem", label: "前指令", tone: "amber" }
     ],
     flowHints: [
       { fromStage: "mem", toStage: "id", label: "r1", tone: "amber", lane: 0 },
@@ -62,11 +62,11 @@ const homePreviewScenes: PreviewScene[] = [
     traceSampleId: "pipeline-forward",
     stepIndex: 5,
     title: "旁路桥接",
-    subtitle: "EX 借道 MEM / WB，继续推进而不停车。",
+    subtitle: "EX 直接借道 MEM / WB。",
     badge: "看清旁路",
     pulseTone: "cyan",
     stageHighlights: [
-      { stage: "ex", label: "consumer", tone: "cyan" },
+      { stage: "ex", label: "取数", tone: "cyan" },
       { stage: "mem", label: "r4", tone: "emerald" },
       { stage: "wb", label: "r2", tone: "emerald" }
     ],
@@ -80,14 +80,14 @@ const homePreviewScenes: PreviewScene[] = [
     mode: "traffic",
     traceSampleId: "pipeline-loaduse",
     stepIndex: 2,
-    title: "红灯控流",
-    subtitle: "load 结果未到，前端短暂停住，EX 插入空泡。",
-    badge: "停车等待",
+    title: "装载停顿",
+    subtitle: "结果没到，前段短暂停住。",
+    badge: "停拍等待",
     pulseTone: "amber",
     stageHighlights: [
-      { stage: "if", label: "红灯", tone: "amber" },
-      { stage: "id", label: "暂停", tone: "amber" },
-      { stage: "ex", label: "bubble", tone: "amber" }
+      { stage: "if", label: "排队", tone: "amber" },
+      { stage: "id", label: "停住", tone: "amber" },
+      { stage: "ex", label: "气泡", tone: "amber" }
     ],
     flowHints: [
       {
@@ -104,14 +104,14 @@ const homePreviewScenes: PreviewScene[] = [
     mode: "traffic",
     traceSampleId: "pipeline-branch",
     stepIndex: 4,
-    title: "错误路径清场",
-    subtitle: "分支成立后，前方错路车辆被整段冲刷出去。",
+    title: "分支冲刷",
+    subtitle: "前面的错误路径被整段清走。",
     badge: "红色清扫",
     pulseTone: "rose",
     stageHighlights: [
       { stage: "ex", label: "判定", tone: "rose" },
-      { stage: "if", label: "清场", tone: "rose" },
-      { stage: "id", label: "清场", tone: "rose" }
+      { stage: "if", label: "清空", tone: "rose" },
+      { stage: "id", label: "清空", tone: "rose" }
     ],
     flowHints: [
       { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
@@ -214,49 +214,49 @@ export function HomeRoute() {
       : null;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.14),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(52,211,153,0.12),_transparent_26%),linear-gradient(180deg,_#07111b_0%,_#030712_46%,_#020617_100%)]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(52,211,153,0.14),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(251,191,36,0.12),_transparent_26%),linear-gradient(180deg,_#020611_0%,_#030712_44%,_#02050e_100%)]">
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <motion.header
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-[34px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur"
+          className="rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_28%),linear-gradient(180deg,rgba(2,6,23,0.96),rgba(2,6,23,0.84))] p-6 shadow-[0_36px_110px_rgba(2,6,23,0.5)] backdrop-blur-xl"
         >
           <div className="grid gap-5 xl:grid-cols-[1.1fr,0.9fr] xl:items-end">
             <div className="space-y-4">
-              <p className="text-sm font-medium uppercase tracking-[0.32em] text-cyan-300/85">
+              <p className="text-sm font-medium uppercase tracking-[0.32em] text-cyan-300/88">
                 LoongArch 五级流水线
               </p>
               <div className="space-y-3">
                 <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl xl:text-6xl">
                   流水线可视化教学台
                 </h1>
-                <p className="max-w-3xl text-base leading-7 text-slate-300 sm:text-lg">
-                  只保留三件事：看清五级推进、判断 hazard、把控制动作直接变成互动。
+                <p className="max-w-3xl text-base leading-7 text-slate-200 sm:text-lg">
+                  一边看五级流水，一边练 hazard 判断和方块调度。
                 </p>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  当前演示
+              <div className="rounded-[26px] border border-cyan-300/22 bg-cyan-300/10 p-4 shadow-[0_0_26px_rgba(34,211,238,0.08)]">
+                <p className="text-xs uppercase tracking-[0.26em] text-cyan-100/72">
+                  当前画面
                 </p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {activeScene?.title ?? "-"}
                 </p>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  当前节目
+              <div className="rounded-[26px] border border-emerald-300/22 bg-emerald-300/10 p-4 shadow-[0_0_26px_rgba(16,185,129,0.08)]">
+                <p className="text-xs uppercase tracking-[0.26em] text-emerald-100/72">
+                  演示片段
                 </p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {activeTrace?.meta?.program ?? "-"}
                 </p>
               </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  当前拍数
+              <div className="rounded-[26px] border border-amber-300/22 bg-amber-300/10 p-4 shadow-[0_0_26px_rgba(251,191,36,0.08)]">
+                <p className="text-xs uppercase tracking-[0.26em] text-amber-100/72">
+                  当前节拍
                 </p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {activeStep?.pipeline?.cycle ?? "-"}
@@ -271,7 +271,7 @@ export function HomeRoute() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.06 }}
-            className="rounded-[34px] border border-white/10 bg-slate-950/72 p-5 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur"
+            className="rounded-[34px] border border-cyan-300/16 bg-[linear-gradient(180deg,rgba(2,6,23,0.96),rgba(2,6,23,0.88))] p-5 shadow-[0_36px_110px_rgba(2,6,23,0.46)] backdrop-blur-xl"
           >
             <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -291,8 +291,8 @@ export function HomeRoute() {
                     onClick={() => setSceneIndex(index)}
                     className={`rounded-full border px-3 py-2 text-sm transition ${
                       activeScene?.id === scene.id
-                        ? "border-cyan-300/35 bg-cyan-300/12 text-cyan-50"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/8"
+                        ? "border-cyan-300/50 bg-cyan-300/18 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.16)]"
+                        : "border-white/12 bg-black/26 text-slate-200 hover:border-white/24 hover:bg-white/10"
                     }`}
                   >
                     {scene.title}
@@ -302,11 +302,11 @@ export function HomeRoute() {
             </div>
 
             {isLoading ? (
-              <div className="rounded-[28px] border border-white/10 bg-white/5 p-10 text-center text-sm text-slate-300">
-                正在载入流水线示例…
+              <div className="rounded-[28px] border border-white/12 bg-black/26 p-10 text-center text-sm text-slate-200">
+                正在载入预览……
               </div>
             ) : error ? (
-              <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 p-10 text-center text-sm text-rose-100">
+              <div className="rounded-[28px] border border-rose-400/24 bg-rose-400/10 p-10 text-center text-sm text-rose-100">
                 {error}
               </div>
             ) : activeStep ? (
@@ -318,12 +318,12 @@ export function HomeRoute() {
                 snapshotLabel="首页预览"
                 badgeLabel={activeScene.badge}
                 pulseTone={activeScene.pulseTone}
-                hazardLabel={activeScene.mode === "hazard" ? "讲解模式" : "交通模式"}
+                hazardLabel={activeScene.mode === "hazard" ? "讲解模式" : "调度模式"}
                 showRegisters={false}
               />
             ) : (
-              <div className="rounded-[28px] border border-white/10 bg-white/5 p-10 text-center text-sm text-slate-300">
-                当前没有可用的示例画面。
+              <div className="rounded-[28px] border border-white/12 bg-black/26 p-10 text-center text-sm text-slate-200">
+                当前没有可用画面。
               </div>
             )}
           </motion.section>
@@ -338,37 +338,37 @@ export function HomeRoute() {
               to="/hazard-puzzle"
               onMouseEnter={() => setPreviewMode("hazard")}
               onMouseLeave={() => setPreviewMode("all")}
-              className="group rounded-[34px] border border-amber-300/22 bg-[linear-gradient(145deg,rgba(251,191,36,0.14),rgba(15,23,42,0.92))] p-6 shadow-[0_30px_90px_rgba(2,6,23,0.34)] transition duration-200 hover:-translate-y-1 hover:border-amber-200/45 hover:shadow-[0_36px_100px_rgba(2,6,23,0.42)]"
+              className="group rounded-[34px] border border-amber-300/26 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_28%),linear-gradient(145deg,rgba(120,53,15,0.36),rgba(15,23,42,0.94))] p-6 shadow-[0_34px_96px_rgba(2,6,23,0.42)] transition duration-200 hover:-translate-y-1 hover:border-amber-200/50 hover:shadow-[0_40px_110px_rgba(2,6,23,0.5)]"
             >
               <div className="flex items-center justify-between gap-4">
-                <span className="rounded-full border border-amber-300/28 bg-amber-300/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-amber-50">
+                <span className="rounded-full border border-amber-300/36 bg-amber-300/14 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-amber-50">
                   模式一
                 </span>
-                <span className="text-xs uppercase tracking-[0.28em] text-amber-100/80">
-                  讲解 / 关卡 / 判断
+                <span className="text-xs uppercase tracking-[0.28em] text-amber-100/82">
+                  讲解 / 关卡
                 </span>
               </div>
 
-              <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-50">
-                Hazard 解谜
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-slate-200">
-                看哪一级在等数据，看该停、该旁路，还是该冲刷。
-              </p>
+                <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-50">
+                  Hazard 判断
+                </h2>
+                <p className="mt-3 text-sm leading-7 text-slate-100">
+                  看哪一级在等数据，判断该停、该旁路，还是该冲刷。
+                </p>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                {["RAW", "旁路", "暂停", "冲刷"].map((item) => (
+                {["RAW", "旁路", "停顿", "冲刷"].map((item) => (
                   <span
                     key={item}
-                    className="rounded-full border border-amber-200/20 bg-amber-200/10 px-3 py-1.5 text-sm text-amber-50"
+                    className="rounded-full border border-amber-200/24 bg-amber-200/10 px-3 py-1.5 text-sm text-amber-50"
                   >
                     {item}
                   </span>
                 ))}
               </div>
 
-              <div className="mt-7 inline-flex items-center rounded-full border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-sm font-medium text-amber-50 transition group-hover:border-amber-100/45 group-hover:bg-amber-100/18">
-                进入解谜
+              <div className="mt-7 inline-flex items-center rounded-full border border-amber-200/28 bg-amber-200/12 px-4 py-2 text-sm font-medium text-amber-50 transition group-hover:border-amber-100/50 group-hover:bg-amber-100/20">
+                进入判断
               </div>
             </Link>
 
@@ -376,36 +376,36 @@ export function HomeRoute() {
               to="/traffic-control"
               onMouseEnter={() => setPreviewMode("traffic")}
               onMouseLeave={() => setPreviewMode("all")}
-              className="group rounded-[34px] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(15,23,42,0.92))] p-6 shadow-[0_30px_90px_rgba(2,6,23,0.34)] transition duration-200 hover:-translate-y-1 hover:border-cyan-200/45 hover:shadow-[0_36px_100px_rgba(2,6,23,0.42)]"
+              className="group rounded-[34px] border border-cyan-300/28 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(251,113,133,0.12),transparent_24%),linear-gradient(145deg,rgba(8,47,73,0.46),rgba(15,23,42,0.96))] p-6 shadow-[0_38px_110px_rgba(2,6,23,0.48)] transition duration-200 hover:-translate-y-1 hover:border-cyan-200/56 hover:shadow-[0_44px_120px_rgba(2,6,23,0.54)]"
             >
               <div className="flex items-center justify-between gap-4">
-                <span className="rounded-full border border-cyan-300/28 bg-cyan-300/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-50">
+                <span className="rounded-full border border-cyan-300/40 bg-cyan-300/16 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-50">
                   模式二
                 </span>
-                <span className="text-xs uppercase tracking-[0.28em] text-cyan-100/80">
-                  交通 / 调度 / 互动
+                <span className="text-xs uppercase tracking-[0.28em] text-cyan-100/84">
+                  下落 / 调度
                 </span>
               </div>
 
               <h2 className="mt-6 text-3xl font-semibold tracking-tight text-slate-50">
-                Traffic Control
+                流水线方块调度
               </h2>
-              <p className="mt-3 text-sm leading-7 text-slate-200">
-                把指令当成车辆，把放行、暂停、冲刷变成路口控制动作。
+              <p className="mt-3 text-sm leading-7 text-slate-100">
+                把指令块堆进主舞台，右侧同步看 stall、旁路、气泡和 flush。
               </p>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                {["放行", "红灯", "清场", "点车查看"].map((item) => (
+                {["下落", "旁路", "停顿", "冲刷"].map((item) => (
                   <span
                     key={item}
-                    className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-sm text-cyan-50"
+                    className="rounded-full border border-cyan-200/24 bg-cyan-200/10 px-3 py-1.5 text-sm text-cyan-50"
                   >
                     {item}
                   </span>
                 ))}
               </div>
 
-              <div className="mt-7 inline-flex items-center rounded-full border border-cyan-200/25 bg-cyan-200/10 px-4 py-2 text-sm font-medium text-cyan-50 transition group-hover:border-cyan-100/45 group-hover:bg-cyan-100/18">
+              <div className="mt-7 inline-flex items-center rounded-full border border-cyan-200/30 bg-cyan-200/12 px-4 py-2 text-sm font-medium text-cyan-50 transition group-hover:border-cyan-100/52 group-hover:bg-cyan-100/22">
                 进入调度
               </div>
             </Link>

@@ -5,51 +5,107 @@ import type {
 } from "@/features/lesson_hazard/contracts";
 import type {
   PipelineStageKey,
-  TracePipelineSnapshot
+  TraceDocument,
+  TraceStepRecord
 } from "@/features/trace/types";
 
-export type TrafficGameActionType = "hold" | "advance" | "flush";
+export type DispatchBlockKind =
+  | "alu"
+  | "forward"
+  | "load-use"
+  | "branch-flush";
 
-export interface TrafficGameFrame {
-  snapshot: TracePipelineSnapshot;
-  controllableStages: PipelineStageKey[];
+export type DispatchPieceState = "falling" | "locked" | "cleared";
+
+export interface DispatchCellPoint {
+  x: number;
+  y: number;
 }
 
-export interface TrafficGameAction {
-  stage: PipelineStageKey;
-  action: TrafficGameActionType;
-  reason: string;
+export interface DispatchInstructionMeta {
+  op: string;
+  raw: string;
+  pc: string;
+  rd: number | null;
+  rj: number | null;
+  rk: number | null;
+  imm: number | null;
 }
 
-export interface TrafficGameActionFeedback {
-  text: string;
+export interface DispatchBlueprint {
+  id: string;
+  kind: DispatchBlockKind;
+  title: string;
+  shortLabel: string;
+  cue: string;
+  description: string;
+  traceSampleId: string;
+  stepWindowStart: number;
+  stepWindowEnd: number;
+  anchorStepIndex: number;
+  anchorStage: PipelineStageKey;
+  rotations: ReadonlyArray<ReadonlyArray<DispatchCellPoint>>;
+  tone: HazardHintTone;
   stageHighlights: HazardStageHighlight[];
   flowHints: HazardFlowHint[];
 }
 
-export interface TrafficGameChoiceDescriptor extends TrafficGameAction {
-  label: string;
-  detail: string;
-  cue: string;
-  tone: HazardHintTone;
-  feedback: TrafficGameActionFeedback;
+export interface ResolvedDispatchBlueprint extends DispatchBlueprint {
+  trace: TraceDocument;
+  instructionKey: string;
+  instruction: DispatchInstructionMeta;
 }
 
-export const trafficActionLabels: Record<TrafficGameActionType, string> = {
-  hold: "暂停",
-  advance: "放行",
-  flush: "冲刷"
-};
+export interface DispatchPiece {
+  id: string;
+  blueprintId: string;
+  kind: DispatchBlockKind;
+  row: number;
+  col: number;
+  rotation: number;
+  progress: number;
+  maxProgress: number;
+  state: DispatchPieceState;
+  instructionKey: string;
+  instruction: DispatchInstructionMeta;
+}
 
-export const trafficActionTones: Record<TrafficGameActionType, HazardHintTone> = {
-  hold: "amber",
-  advance: "cyan",
-  flush: "rose"
-};
+export interface DispatchBoardCell {
+  blockId: string;
+}
 
-export const trafficGameContractNotes = [
-  "输入：一拍流水线快照，以及当前可控制的 stage。",
-  "动作：对指定 stage 执行放行、暂停或冲刷。",
-  "输出：沿用高亮、流向和短反馈，不改 trace 协议。",
-  "页面：交通调度台只换交互映射，不脱离原有流水线逻辑。"
-];
+export interface DispatchSession {
+  board: Array<Array<DispatchBoardCell | null>>;
+  pieces: Record<string, DispatchPiece>;
+  activePieceId: string | null;
+  nextBlueprintIds: string[];
+  selectedBlockId: string | null;
+  nextSerial: number;
+  score: number;
+  lines: number;
+  lockedCount: number;
+  gameOver: boolean;
+  paused: boolean;
+  lastActionLabel: string;
+  lastEventLabel: string;
+}
+
+export interface DispatchPieceSnapshot {
+  piece: DispatchPiece;
+  blueprint: ResolvedDispatchBlueprint;
+  currentStepIndex: number;
+  currentStep: TraceStepRecord;
+  previousStep: TraceStepRecord | null;
+  activeStage: PipelineStageKey | null;
+  pipelineState: string;
+  hazardText: string;
+  stageHighlights: HazardStageHighlight[];
+  flowHints: HazardFlowHint[];
+}
+
+export const dispatchKindLabels: Record<DispatchBlockKind, string> = {
+  alu: "算术推进",
+  forward: "旁路直送",
+  "load-use": "装载停顿",
+  "branch-flush": "分支冲刷"
+};

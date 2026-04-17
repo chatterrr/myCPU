@@ -1,373 +1,358 @@
+import {
+  findTokenByInstructionKey,
+  getPipelineTokens,
+  type PipelineToken
+} from "@/features/pipeline/visuals";
 import type {
   HazardFlowHint,
-  HazardHintTone,
   HazardStageHighlight
 } from "@/features/lesson_hazard/contracts";
-import type {
-  TrafficGameActionType,
-  TrafficGameChoiceDescriptor
+import {
+  dispatchKindLabels,
+  type DispatchBlueprint,
+  type DispatchBlockKind,
+  type DispatchPiece,
+  type DispatchPieceSnapshot,
+  type ResolvedDispatchBlueprint
 } from "@/features/traffic_game/contracts";
-import type { PipelineStageKey } from "@/features/trace/types";
+import type {
+  PipelineStageKey,
+  TraceDocument,
+  TraceStepRecord
+} from "@/features/trace/types";
 
-export type TrafficGameChoiceId =
-  | "advance-if"
-  | "advance-ex"
-  | "hold-id"
-  | "flush-ex"
-  | "flush-if";
-
-export interface TrafficGameChoice extends TrafficGameChoiceDescriptor {
-  id: TrafficGameChoiceId;
+function cells(
+  ...points: Array<[number, number]>
+): Array<{ x: number; y: number }> {
+  return points.map(([x, y]) => ({ x, y }));
 }
 
-export interface TrafficGameLevel {
-  id: string;
-  title: string;
-  shortTitle: string;
-  traceSampleId: string;
-  focusStepIndex: number;
-  focusStage: PipelineStageKey;
-  briefing: string;
-  objective: string;
-  choices: TrafficGameChoice[];
-  correctChoiceId: TrafficGameChoiceId;
-  previewHighlights: HazardStageHighlight[];
-  previewFlows: HazardFlowHint[];
-}
+const iShape = [
+  cells([0, 1], [1, 1], [2, 1], [3, 1]),
+  cells([2, 0], [2, 1], [2, 2], [2, 3])
+] as const;
 
-export interface TrafficGameMission {
-  id: string;
-  title: string;
-  summary: string;
-  frames: TrafficGameLevel[];
-}
+const oShape = [
+  cells([1, 0], [2, 0], [1, 1], [2, 1])
+] as const;
 
-export interface TrafficGameFeedback {
-  status: "correct" | "incorrect";
-  explanation: string;
-  choice: TrafficGameChoice;
-  recommendedChoice: TrafficGameChoice;
-  stageHighlights: HazardStageHighlight[];
-  flowHints: HazardFlowHint[];
-}
+const tShape = [
+  cells([1, 0], [0, 1], [1, 1], [2, 1]),
+  cells([1, 0], [1, 1], [2, 1], [1, 2]),
+  cells([0, 1], [1, 1], [2, 1], [1, 2]),
+  cells([1, 0], [0, 1], [1, 1], [1, 2])
+] as const;
 
-function buildChoice(
-  id: TrafficGameChoiceId,
-  stage: PipelineStageKey,
-  action: TrafficGameActionType,
-  label: string,
-  detail: string,
-  cue: string,
-  tone: HazardHintTone,
-  feedbackText: string,
-  feedbackHighlights: HazardStageHighlight[],
-  feedbackFlows: HazardFlowHint[]
-): TrafficGameChoice {
-  return {
-    id,
-    stage,
-    action,
-    reason: detail,
-    label,
-    detail,
-    cue,
-    tone,
-    feedback: {
-      text: feedbackText,
-      stageHighlights: feedbackHighlights,
-      flowHints: feedbackFlows
+const sShape = [
+  cells([1, 0], [2, 0], [0, 1], [1, 1]),
+  cells([1, 0], [1, 1], [2, 1], [2, 2])
+] as const;
+
+const jShape = [
+  cells([0, 0], [0, 1], [1, 1], [2, 1]),
+  cells([1, 0], [2, 0], [1, 1], [1, 2]),
+  cells([0, 1], [1, 1], [2, 1], [2, 2]),
+  cells([1, 0], [1, 1], [0, 2], [1, 2])
+] as const;
+
+export const dispatchBlueprints: DispatchBlueprint[] = [
+  {
+    id: "alu-lane",
+    kind: "alu",
+    title: "算术直推",
+    shortLabel: "ALU",
+    cue: "直推",
+    description: "稳定下压",
+    traceSampleId: "pipeline-forward",
+    stepWindowStart: 0,
+    stepWindowEnd: 4,
+    anchorStepIndex: 0,
+    anchorStage: "if",
+    rotations: iShape,
+    tone: "emerald",
+    stageHighlights: [
+      { stage: "if", label: "入场", tone: "emerald" },
+      { stage: "wb", label: "写回", tone: "cyan" }
+    ],
+    flowHints: []
+  },
+  {
+    id: "alu-square",
+    kind: "alu",
+    title: "写回方块",
+    shortLabel: "WR",
+    cue: "落稳",
+    description: "补齐空位",
+    traceSampleId: "pipeline-branch",
+    stepWindowStart: 5,
+    stepWindowEnd: 9,
+    anchorStepIndex: 5,
+    anchorStage: "if",
+    rotations: oShape,
+    tone: "cyan",
+    stageHighlights: [
+      { stage: "mem", label: "通过", tone: "cyan" },
+      { stage: "wb", label: "提交", tone: "emerald" }
+    ],
+    flowHints: []
+  },
+  {
+    id: "forward-bridge",
+    kind: "forward",
+    title: "旁路桥",
+    shortLabel: "FW",
+    cue: "旁路",
+    description: "结果直送",
+    traceSampleId: "pipeline-forward",
+    stepWindowStart: 3,
+    stepWindowEnd: 7,
+    anchorStepIndex: 3,
+    anchorStage: "if",
+    rotations: tShape,
+    tone: "cyan",
+    stageHighlights: [
+      { stage: "ex", label: "取数", tone: "cyan" },
+      { stage: "mem", label: "r4", tone: "emerald" },
+      { stage: "wb", label: "r2", tone: "emerald" }
+    ],
+    flowHints: [
+      { fromStage: "mem", toStage: "ex", label: "r4", tone: "cyan", lane: 0 },
+      { fromStage: "wb", toStage: "ex", label: "r2", tone: "cyan", lane: 1 }
+    ]
+  },
+  {
+    id: "loaduse-brake",
+    kind: "load-use",
+    title: "装载急停",
+    shortLabel: "ST",
+    cue: "停拍",
+    description: "插入气泡",
+    traceSampleId: "pipeline-loaduse",
+    stepWindowStart: 1,
+    stepWindowEnd: 6,
+    anchorStepIndex: 1,
+    anchorStage: "if",
+    rotations: sShape,
+    tone: "amber",
+    stageHighlights: [
+      { stage: "if", label: "排队", tone: "amber" },
+      { stage: "id", label: "停住", tone: "amber" },
+      { stage: "ex", label: "气泡", tone: "amber" }
+    ],
+    flowHints: [
+      { fromStage: "ex", toStage: "id", label: "load 未到", tone: "amber", lane: 0 }
+    ]
+  },
+  {
+    id: "branch-sweep",
+    kind: "branch-flush",
+    title: "分支冲刷",
+    shortLabel: "FL",
+    cue: "清前段",
+    description: "改道清空",
+    traceSampleId: "pipeline-branch",
+    stepWindowStart: 2,
+    stepWindowEnd: 6,
+    anchorStepIndex: 2,
+    anchorStage: "if",
+    rotations: jShape,
+    tone: "rose",
+    stageHighlights: [
+      { stage: "ex", label: "改道", tone: "rose" },
+      { stage: "if", label: "清空", tone: "rose" },
+      { stage: "id", label: "清空", tone: "rose" }
+    ],
+    flowHints: [
+      { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
+      { fromStage: "ex", toStage: "if", label: "flush", tone: "rose", lane: 1 }
+    ]
+  }
+];
+
+export const requiredDispatchSampleIds = Array.from(
+  new Set(dispatchBlueprints.map((blueprint) => blueprint.traceSampleId))
+);
+
+export function resolveDispatchBlueprints(
+  traceMap: Record<string, TraceDocument>
+): ResolvedDispatchBlueprint[] {
+  return dispatchBlueprints.map((blueprint) => {
+    const trace = traceMap[blueprint.traceSampleId];
+
+    if (!trace) {
+      throw new Error(`缺少示例 trace: ${blueprint.traceSampleId}`);
     }
+
+    const anchorStep = trace.steps[blueprint.anchorStepIndex];
+
+    if (!anchorStep) {
+      throw new Error(
+        `trace ${blueprint.traceSampleId} 缺少步号 ${blueprint.anchorStepIndex}`
+      );
+    }
+
+    return {
+      ...blueprint,
+      trace,
+      instructionKey: [anchorStep.op, anchorStep.raw, anchorStep.pc].join("|"),
+      instruction: {
+        op: anchorStep.op,
+        raw: anchorStep.raw,
+        pc: anchorStep.pc,
+        rd: anchorStep.rd,
+        rj: anchorStep.rj,
+        rk: anchorStep.rk,
+        imm: anchorStep.imm
+      }
+    };
+  });
+}
+
+function buildStageHighlights(
+  blueprint: ResolvedDispatchBlueprint,
+  activeStage: PipelineStageKey | null,
+  step: TraceStepRecord
+) {
+  const dynamicHighlights: HazardStageHighlight[] = [];
+
+  if (activeStage) {
+    dynamicHighlights.push({
+      stage: activeStage,
+      label: "当前块",
+      tone: blueprint.tone
+    });
+  }
+
+  if (step.pipeline?.stall && !dynamicHighlights.some((item) => item.stage === "id")) {
+    dynamicHighlights.push({ stage: "id", label: "停顿", tone: "amber" });
+  }
+
+  if (step.pipeline?.bubble.length && !dynamicHighlights.some((item) => item.stage === "ex")) {
+    dynamicHighlights.push({ stage: "ex", label: "气泡", tone: "amber" });
+  }
+
+  if (step.pipeline?.flush.length && !dynamicHighlights.some((item) => item.stage === "if")) {
+    dynamicHighlights.push({ stage: "if", label: "冲刷", tone: "rose" });
+  }
+
+  return [...blueprint.stageHighlights, ...dynamicHighlights];
+}
+
+export function describeDispatchHazard(
+  blueprint: ResolvedDispatchBlueprint,
+  step: TraceStepRecord
+) {
+  if (step.pipeline?.flush.length || step.branched) {
+    return "错误路径被整段冲掉。";
+  }
+
+  if (step.pipeline?.stall) {
+    return "前段停住，执行段插入气泡。";
+  }
+
+  if (blueprint.kind === "forward") {
+    return "结果直接旁路回执行段。";
+  }
+
+  if (step.gpr_changes.length) {
+    return "结果已经写回寄存器。";
+  }
+
+  return "五级流水正在稳定推进。";
+}
+
+function findActiveStageToken(
+  step: TraceStepRecord,
+  instructionKey: string
+): PipelineToken | null {
+  return (
+    findTokenByInstructionKey(step, instructionKey)
+    ?? getPipelineTokens(step).find((token) => token.kind === "bubble")
+    ?? null
+  );
+}
+
+export function buildDispatchPieceSnapshot(
+  piece: DispatchPiece | null | undefined,
+  blueprints: ResolvedDispatchBlueprint[]
+): DispatchPieceSnapshot | null {
+  if (!piece) {
+    return null;
+  }
+
+  const blueprint = blueprints.find((item) => item.id === piece.blueprintId);
+
+  if (!blueprint) {
+    return null;
+  }
+
+  const currentStepIndex = Math.min(
+    blueprint.stepWindowStart + piece.progress,
+    blueprint.stepWindowEnd
+  );
+  const currentStep = blueprint.trace.steps[currentStepIndex];
+
+  if (!currentStep) {
+    return null;
+  }
+
+  const previousStep =
+    currentStepIndex > blueprint.stepWindowStart
+      ? blueprint.trace.steps[currentStepIndex - 1] ?? null
+      : null;
+  const activeToken = findActiveStageToken(currentStep, piece.instructionKey);
+
+  return {
+    piece,
+    blueprint,
+    currentStepIndex,
+    currentStep,
+    previousStep,
+    activeStage: activeToken?.stage ?? null,
+    pipelineState: activeToken?.state ?? piece.state,
+    hazardText: describeDispatchHazard(blueprint, currentStep),
+    stageHighlights: buildStageHighlights(
+      blueprint,
+      activeToken?.stage ?? null,
+      currentStep
+    ),
+    flowHints: blueprint.flowHints
   };
 }
 
-export function getTrafficGamePreviewHighlights(
-  level: TrafficGameLevel
-): HazardStageHighlight[] {
-  return level.previewHighlights;
+export function getDispatchStatusText(snapshot: DispatchPieceSnapshot | null) {
+  if (!snapshot) {
+    return "等待入场";
+  }
+
+  if (snapshot.pipelineState === "cleared") {
+    return "已消行";
+  }
+
+  if (snapshot.pipelineState === "locked") {
+    return "已锁定";
+  }
+
+  return dispatchKindLabels[snapshot.blueprint.kind];
 }
 
-export function buildTrafficGameFeedback(
-  level: TrafficGameLevel,
-  choiceId: TrafficGameChoiceId
-): TrafficGameFeedback {
-  const choice =
-    level.choices.find((candidate) => candidate.id === choiceId) ?? level.choices[0];
-  const recommendedChoice =
-    level.choices.find((candidate) => candidate.id === level.correctChoiceId)
-    ?? level.choices[0];
-  const isCorrect = choiceId === level.correctChoiceId;
-
-  return {
-    status: isCorrect ? "correct" : "incorrect",
-    explanation: choice.feedback.text,
-    choice,
-    recommendedChoice,
-    stageHighlights: choice.feedback.stageHighlights,
-    flowHints: choice.feedback.flowHints
-  };
+export function getDispatchBoardLegend(kind: DispatchBlockKind) {
+  return dispatchKindLabels[kind];
 }
 
-export const trafficControlMission: TrafficGameMission = {
-  id: "dispatch-sprint",
-  title: "路口调度",
-  summary: "四个时刻。读一拍、走到控制点、执行一个动作。",
-  frames: [
-    {
-      id: "green-wave",
-      title: "F1. 入口绿波",
-      shortTitle: "绿波",
-      traceSampleId: "pipeline-forward",
-      focusStepIndex: 2,
-      focusStage: "if",
-      briefing: "入口车道通畅，当前重点是让新车顺利进场。",
-      objective: "走到对应控制点后，选一个动作让车流继续前进。",
-      choices: [
-        buildChoice(
-          "advance-if",
-          "if",
-          "advance",
-          "入口放行",
-          "入口车道保持绿灯，继续把新车送进来。",
-          "GO",
-          "cyan",
-          "对。入口当前没有堵点，放行能让车流顺畅接到下一个 stage。",
-          [
-            { stage: "if", label: "绿灯", tone: "cyan" },
-            { stage: "id", label: "接车", tone: "emerald" }
-          ],
-          [{ fromStage: "if", toStage: "id", label: "进场", tone: "cyan", lane: 0 }]
-        ),
-        buildChoice(
-          "hold-id",
-          "id",
-          "hold",
-          "译码红灯",
-          "明明没有压力，却提前把等待区锁住。",
-          "STOP",
-          "amber",
-          "这会无故把流量堵在入口前。当前译码区是畅通的，不需要提前刹车。",
-          [
-            { stage: "id", label: "红灯", tone: "amber" },
-            { stage: "if", label: "排队", tone: "amber" }
-          ],
-          [{ fromStage: "if", toStage: "id", label: "堆积", tone: "amber", lane: 0 }]
-        ),
-        buildChoice(
-          "flush-if",
-          "if",
-          "flush",
-          "入口清空",
-          "把刚抓到的年轻车辆直接清掉。",
-          "CLR",
-          "rose",
-          "这会白白丢掉健康流量。现在还没有错路，不该对入口做清场。",
-          [
-            { stage: "if", label: "清空", tone: "rose" },
-            { stage: "id", label: "空档", tone: "rose" }
-          ],
-          [{ fromStage: "if", toStage: "id", label: "空槽", tone: "rose", lane: 0 }]
-        )
-      ],
-      correctChoiceId: "advance-if",
-      previewHighlights: [{ stage: "if", label: "入口", tone: "emerald" }],
-      previewFlows: []
-    },
-    {
-      id: "forward-run",
-      title: "F2. 中心旁路",
-      shortTitle: "旁路",
-      traceSampleId: "pipeline-forward",
-      focusStepIndex: 5,
-      focusStage: "ex",
-      briefing: "中心路口的车正在吃到旁路结果，这拍可以直接放行。",
-      objective: "靠近执行路口，选择一个动作处理当前车辆。",
-      choices: [
-        buildChoice(
-          "advance-ex",
-          "ex",
-          "advance",
-          "路口放行",
-          "让 EX 车辆借道通过，不额外停车。",
-          "GO",
-          "cyan",
-          "对。旁路已经到位，中心路口直接放行最顺畅。",
-          [
-            { stage: "ex", label: "放行", tone: "cyan" },
-            { stage: "mem", label: "r4", tone: "emerald" },
-            { stage: "wb", label: "r2", tone: "emerald" }
-          ],
-          [
-            { fromStage: "mem", toStage: "ex", label: "r4", tone: "cyan", lane: 0 },
-            { fromStage: "wb", toStage: "ex", label: "r2", tone: "cyan", lane: 1 }
-          ]
-        ),
-        buildChoice(
-          "hold-id",
-          "id",
-          "hold",
-          "等待区拦停",
-          "把年轻车辆先顶在等待区里。",
-          "STOP",
-          "amber",
-          "旁路已经帮 EX 解开依赖，这时再拦停只会平白降低吞吐。",
-          [
-            { stage: "id", label: "拦停", tone: "amber" },
-            { stage: "ex", label: "已就绪", tone: "emerald" }
-          ],
-          [{ fromStage: "mem", toStage: "ex", label: "已到位", tone: "cyan", lane: 0 }]
-        ),
-        buildChoice(
-          "flush-ex",
-          "ex",
-          "flush",
-          "路口清场",
-          "把中心路口的有效车辆直接清掉。",
-          "CLR",
-          "rose",
-          "这会把已经准备好的有效车辆扫掉，既不安全也不必要。",
-          [
-            { stage: "ex", label: "清场", tone: "rose" },
-            { stage: "mem", label: "有效数据", tone: "cyan" }
-          ],
-          [{ fromStage: "wb", toStage: "ex", label: "仍需使用", tone: "cyan", lane: 0 }]
-        )
-      ],
-      correctChoiceId: "advance-ex",
-      previewHighlights: [{ stage: "ex", label: "路口", tone: "emerald" }],
-      previewFlows: []
-    },
-    {
-      id: "loaduse-brake",
-      title: "F3. 等待区刹车",
-      shortTitle: "刹车",
-      traceSampleId: "pipeline-loaduse",
-      focusStepIndex: 2,
-      focusStage: "id",
-      briefing: "等待区想要的载入结果还没回来，这时必须先顶住车流。",
-      objective: "走到等待区控制点，决定要不要亮红灯。",
-      choices: [
-        buildChoice(
-          "hold-id",
-          "id",
-          "hold",
-          "等待区红灯",
-          "先让 IF / ID 顶住一拍，给 load 让路。",
-          "STOP",
-          "amber",
-          "对。这里要先顶住等待区，再给 EX 一个气泡去消化压力。",
-          [
-            { stage: "if", label: "排队", tone: "amber" },
-            { stage: "id", label: "红灯", tone: "amber" },
-            { stage: "ex", label: "bubble", tone: "amber" }
-          ],
-          [
-            {
-              fromStage: "ex",
-              toStage: "id",
-              label: "load 未到",
-              tone: "amber",
-              lane: 0
-            }
-          ]
-        ),
-        buildChoice(
-          "advance-if",
-          "if",
-          "advance",
-          "入口继续放",
-          "入口继续往里塞车，给堵点加压。",
-          "GO",
-          "cyan",
-          "这会把入口车辆继续推向已经堵住的等待区，压力只会更大。",
-          [
-            { stage: "if", label: "继续进车", tone: "cyan" },
-            { stage: "id", label: "已堵", tone: "amber" }
-          ],
-          [{ fromStage: "if", toStage: "id", label: "堆积", tone: "amber", lane: 0 }]
-        ),
-        buildChoice(
-          "flush-ex",
-          "ex",
-          "flush",
-          "执行区清场",
-          "把正在走的 load 直接清掉。",
-          "CLR",
-          "rose",
-          "这里需要的是短暂停车，不是把有效 load 清空。",
-          [
-            { stage: "ex", label: "清场", tone: "rose" },
-            { stage: "id", label: "仍在等待", tone: "amber" }
-          ],
-          [{ fromStage: "ex", toStage: "id", label: "值丢失", tone: "rose", lane: 0 }]
-        )
-      ],
-      correctChoiceId: "hold-id",
-      previewHighlights: [{ stage: "id", label: "等待区", tone: "emerald" }],
-      previewFlows: []
-    },
-    {
-      id: "branch-purge",
-      title: "F4. 错路清场",
-      shortTitle: "清场",
-      traceSampleId: "pipeline-branch",
-      focusStepIndex: 4,
-      focusStage: "ex",
-      briefing: "分支判定已成立，前面的年轻车辆都在错路上。",
-      objective: "靠近执行路口，发动一次正确的清场动作。",
-      choices: [
-        buildChoice(
-          "flush-ex",
-          "ex",
-          "flush",
-          "从路口清场",
-          "以 EX 为起点，把 IF / ID 错路一起扫掉。",
-          "CLR",
-          "rose",
-          "对。分支在 EX 成立后，必须立即把年轻错路一起冲刷掉。",
-          [
-            { stage: "ex", label: "判定成立", tone: "rose" },
-            { stage: "if", label: "清场", tone: "rose" },
-            { stage: "id", label: "清场", tone: "rose" }
-          ],
-          [
-            { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
-            { fromStage: "ex", toStage: "if", label: "flush", tone: "rose", lane: 1 }
-          ]
-        ),
-        buildChoice(
-          "hold-id",
-          "id",
-          "hold",
-          "等待区暂停",
-          "只是停住错路车辆，不把它们扫走。",
-          "STOP",
-          "amber",
-          "错路不能只停住，必须立刻清掉，否则错误路径还会继续占资源。",
-          [
-            { stage: "id", label: "停住", tone: "amber" },
-            { stage: "if", label: "仍是错路", tone: "rose" }
-          ],
-          [{ fromStage: "ex", toStage: "id", label: "仍未清场", tone: "rose", lane: 0 }]
-        ),
-        buildChoice(
-          "advance-if",
-          "if",
-          "advance",
-          "入口继续放行",
-          "让新车继续冲进错误路径。",
-          "GO",
-          "cyan",
-          "这会让错路越走越深。既然已经判定改向，就应马上清场。",
-          [
-            { stage: "if", label: "继续进错路", tone: "rose" },
-            { stage: "ex", label: "改向待执行", tone: "rose" }
-          ],
-          [{ fromStage: "if", toStage: "id", label: "继续错路", tone: "rose", lane: 0 }]
-        )
-      ],
-      correctChoiceId: "flush-ex",
-      previewHighlights: [{ stage: "ex", label: "路口", tone: "emerald" }],
-      previewFlows: []
-    }
-  ]
-};
+export function getNextBlueprint(
+  blueprints: ResolvedDispatchBlueprint[],
+  nextBlueprintIds: string[]
+) {
+  const nextId = nextBlueprintIds[0];
+
+  return blueprints.find((blueprint) => blueprint.id === nextId) ?? null;
+}
+
+export function getSnapshotStageText(snapshot: DispatchPieceSnapshot | null) {
+  if (!snapshot?.activeStage) {
+    return "等待入场";
+  }
+
+  return snapshot.activeStage.toUpperCase();
+}

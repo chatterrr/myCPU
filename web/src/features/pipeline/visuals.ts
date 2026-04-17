@@ -29,8 +29,8 @@ export interface RegisterActivity {
 const stateLabelMap: Record<string, string> = {
   empty: "空槽",
   fetch: "取指",
-  occupied: "执行中",
-  stalled: "暂停",
+  occupied: "占用",
+  stalled: "停顿",
   flushed: "冲刷",
   bubble: "气泡"
 };
@@ -45,7 +45,9 @@ const stageLabelMap: Record<PipelineStageKey, string> = {
 
 const emptyStage: TracePipelineStage = { state: "empty" };
 
-function buildInstructionKey(stage: TracePipelineStage): string | null {
+export function buildInstructionKeyFromStage(
+  stage: TracePipelineStage
+): string | null {
   if (!stage.op && !stage.raw && !stage.pc) {
     return null;
   }
@@ -53,11 +55,15 @@ function buildInstructionKey(stage: TracePipelineStage): string | null {
   return [stage.op ?? "-", stage.raw ?? "-", stage.pc ?? "-"].join("|");
 }
 
+export function buildInstructionKeyFromStep(step: TraceStepRecord): string {
+  return [step.op ?? "-", step.raw ?? "-", step.pc ?? "-"].join("|");
+}
+
 function buildStageToken(
   stageKey: PipelineStageKey,
   stage: TracePipelineStage
 ): PipelineToken | null {
-  const instructionKey = buildInstructionKey(stage);
+  const instructionKey = buildInstructionKeyFromStage(stage);
 
   if (!instructionKey) {
     return null;
@@ -69,8 +75,8 @@ function buildStageToken(
       instructionKey,
       kind: "instruction",
       state: stage.state,
-      title: "暂停",
-      subtitle: stage.pc ?? "保持原位",
+      title: "停顿",
+      subtitle: stage.pc ?? "原地等待",
       op: stage.op,
       pc: stage.pc,
       raw: stage.raw
@@ -150,12 +156,27 @@ export function getPipelineTokens(step: TraceStepRecord | null): PipelineToken[]
       instructionKey: `bubble|${stageKey}|${step.pipeline?.cycle ?? 0}|${index}`,
       kind: "bubble",
       state: "bubble",
-      title: "Bubble",
-      subtitle: "插入空泡"
+      title: "气泡",
+      subtitle: "插入空拍"
     });
   });
 
   return tokens;
+}
+
+export function findTokenByInstructionKey(
+  step: TraceStepRecord | null | undefined,
+  instructionKey: string | null
+): PipelineToken | null {
+  if (!step || !instructionKey) {
+    return null;
+  }
+
+  return (
+    getPipelineTokens(step).find(
+      (candidate) => candidate.instructionKey === instructionKey
+    ) ?? null
+  );
 }
 
 export function findTokenOriginStage(
@@ -212,7 +233,7 @@ export function describePipelinePulse(
 
   if (step.pipeline?.stall) {
     return {
-      label: step.pipeline.stall_reason ? "暂停等待数据" : "暂停",
+      label: step.pipeline.stall_reason ? "停拍等数" : "停顿",
       tone: "amber"
     };
   }
@@ -221,11 +242,20 @@ export function describePipelinePulse(
     return { label: "插入气泡", tone: "amber" };
   }
 
-  if (preferredTone !== "neutral") {
-    return {
-      label: preferredTone === "cyan" ? "旁路继续推进" : "稳定推进",
-      tone: preferredTone
-    };
+  if (preferredTone === "cyan") {
+    return { label: "旁路继续", tone: "cyan" };
+  }
+
+  if (preferredTone === "emerald") {
+    return { label: "稳定推进", tone: "emerald" };
+  }
+
+  if (preferredTone === "rose") {
+    return { label: "分支改道", tone: "rose" };
+  }
+
+  if (preferredTone === "amber") {
+    return { label: "停顿缓冲", tone: "amber" };
   }
 
   return { label: "逐拍推进", tone: "emerald" };
