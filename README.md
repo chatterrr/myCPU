@@ -1,13 +1,11 @@
 # myCPU LoongArch 教学流水线实验台
 
-一个面向教学演示的 LoongArch ISA 模拟与流水线可视化项目。
+一个 LoongArch ISA 模拟与流水线可视化项目。
 
 当前仓库包含两部分：
 
 - C++ 模拟器：负责装载程序、运行 CPU、导出执行 trace。
 - Web 教学前端：负责把 trace 渲染成可交互的流水线教学页面与轻游戏页面。
-
-项目目标不是做工业级 CPU 模拟器，而是做一个适合课堂、答辩、演示和自学的“看得见 hazard、看得见流水线推进”的教学台。
 
 ---
 
@@ -250,18 +248,12 @@ myCPU_compatible/
 ├── CMakeLists.txt
 ├── main.cpp
 ├── README.md
-├── README_对接说明.md
-├── AGENTS.md
 ├── config/
 ├── cpu/
 ├── device/
-├── docs/
-│   ├── Prompt.md
-│   └── Plan.md
 ├── loader/
 ├── memory/
 ├── tests/
-├── tools/
 ├── utils/
 └── web/
     ├── package.json
@@ -291,28 +283,3 @@ myCPU_compatible/
   - forwarding
   - load-use
   - branch flush
-
----
-
-## 10. 适合怎么使用
-
-这个项目适合以下场景：
-
-- 课程演示 LoongArch 基础指令执行
-- 讲解 5 级流水线推进
-- 讲解 hazard 类型与处理策略
-- 用 Web 页面做课堂互动或展示
-- 把命令行 trace 导入前端做可视化教学
-
----
-
-## 11. 补充说明
-
-- 当前仓库以教学表达为优先，不追求完整 CPU 微架构覆盖。
-- 根目录中的 `README_对接说明.md` 保留了较早阶段的对接说明，可作为历史参考。
-- 当前推荐阅读顺序：
-  1. 本 README
-  2. `main.cpp`
-  3. `tests/test_programs.h`
-  4. `web/src/routes/`
-
