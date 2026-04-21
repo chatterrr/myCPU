@@ -2,8 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "device/bus.h"
+#include "device/timer.h"
 #include "device/uart.h"
 
 class Memory {
@@ -19,13 +22,16 @@ public:
     void write32(uint32_t addr, uint32_t value);
 
     std::size_t size() const noexcept { return data_.size(); }
+    void tick_devices();
+    bool has_pending_interrupt() const noexcept;
+    std::optional<TrapCause> consume_pending_interrupt();
 
 private:
     void check_range(uint32_t addr, std::size_t width) const;
     static void check_alignment(uint32_t addr, std::size_t align);
-    bool is_uart_addr(uint32_t addr) const noexcept;
-    void write_uart_low_byte(uint32_t value);
 
     std::vector<uint8_t> data_;
+    Bus bus_;
     UART uart_;
+    TimerDevice timer_;
 };

@@ -18,6 +18,8 @@ option(MYCPU_ENABLE_DEBUG_TRACE "Enable DEBUG_TRACE macro" OFF)
 set(MYCPU_SUPPORT_SOURCES
     memory/memory.cpp
     loader/loader.cpp
+    device/bus.cpp
+    device/timer.cpp
     device/uart.cpp
     utils/debug.cpp
 )

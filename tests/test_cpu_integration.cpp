@@ -39,15 +39,48 @@ namespace {
         ctx.cpu.reset(base);
     }
 
+    void load_exception_handler(
+        ProgramContext& ctx,
+        const std::vector<uint32_t>& handler_words
+    ) {
+        Loader::load_program_words(ctx.mem, config::EXCEPTION_VECTOR_BASE, handler_words);
+    }
+
+    std::vector<uint32_t> make_counter_handler_words(uint32_t reg_index) {
+        return {
+            tests::ENC_2RI12(tests::OP_ADDI_W, reg_index, reg_index, 1),
+            tests::kErtnRaw,
+        };
+    }
+
+    void expect_trap_state(
+        const CPUState& s,
+        TrapCause expected_cause,
+        uint32_t expected_epc,
+        uint32_t expected_badv,
+        const std::string& label
+    ) {
+        expect(s.pc == config::EXCEPTION_VECTOR_BASE, label + ": pc should jump to exception vector");
+        expect(s.cause == expected_cause, label + ": cause mismatch");
+        expect(s.epc == expected_epc, label + ": epc mismatch");
+        expect(s.badv == expected_badv, label + ": badv mismatch");
+        expect((s.status & CPU_STATUS_EXL) != 0u, label + ": EXL should be set in trap");
+    }
+
     std::string capture_trace_for_program(
         const std::vector<uint32_t>& words,
         uint64_t max_steps,
         bool pipeline_mode,
-        uint32_t base = config::PROGRAM_BASE
+        uint32_t base = config::PROGRAM_BASE,
+        const std::vector<uint32_t>& handler_words = {}
     ) {
         ProgramContext ctx;
         ctx.cpu.set_pipeline_mode(pipeline_mode);
-        load_and_reset(ctx, words, base);
+        Loader::load_program_words(ctx.mem, base, words);
+        if (!handler_words.empty()) {
+            load_exception_handler(ctx, handler_words);
+        }
+        ctx.cpu.reset(base);
 
         std::ostringstream trace;
         set_trace_stream(&trace);
@@ -144,43 +177,57 @@ namespace {
     void test_unaligned_access_program() {
         ProgramContext ctx;
         load_and_reset(ctx, tests::kUnalignedAccessProgramWords);
+        ctx.cpu.run(tests::kUnalignedAccessProgramSteps);
 
-        bool thrown = false;
-        try {
-            ctx.cpu.run(tests::kUnalignedAccessProgramSteps);
-        }
-        catch (const std::runtime_error&) {
-            thrown = true;
-        }
-        expect(thrown, "unaligned access program should throw runtime_error");
+        const CPUState& s = ctx.cpu.state();
+        expect_trap_state(
+            s,
+            TrapCause::UnalignedAccess,
+            config::PROGRAM_BASE + 12u,
+            0x82u,
+            "unaligned access");
     }
 
     void test_out_of_range_access_program() {
         ProgramContext ctx;
         load_and_reset(ctx, tests::kOutOfRangeAccessProgramWords);
+        ctx.cpu.run(tests::kOutOfRangeAccessProgramSteps);
 
-        bool thrown = false;
-        try {
-            ctx.cpu.run(tests::kOutOfRangeAccessProgramSteps);
-        }
-        catch (const std::runtime_error&) {
-            thrown = true;
-        }
-        expect(thrown, "out-of-range access program should throw runtime_error");
+        const CPUState& s = ctx.cpu.state();
+        expect_trap_state(
+            s,
+            TrapCause::AddressOutOfRange,
+            config::PROGRAM_BASE + 12u,
+            0xFFFFFFFCu,
+            "out-of-range access");
     }
 
     void test_invalid_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kInvalidProgramWords);
+        const std::vector<uint32_t> words = {
+            0x00000000u,
+            tests::ENC_2RI12(tests::OP_ADDI_W, 9, 0, 7),
+        };
+        load_and_reset(ctx, words);
+        load_exception_handler(ctx, make_counter_handler_words(30));
 
-        bool thrown = false;
-        try {
-            ctx.cpu.step();
-        }
-        catch (const std::runtime_error&) {
-            thrown = true;
-        }
-        expect(thrown, "invalid program should throw runtime_error");
+        ctx.cpu.step();
+        expect_trap_state(
+            ctx.cpu.state(),
+            TrapCause::InvalidInstruction,
+            config::PROGRAM_BASE + 4u,
+            config::PROGRAM_BASE,
+            "invalid instruction");
+
+        ctx.cpu.step();
+        ctx.cpu.step();
+        ctx.cpu.step();
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[30] == 1u, "invalid instruction handler should increment the trap counter");
+        expect(s.gpr[9] == 7u, "ERTN should resume at the saved epc");
+        expect((s.status & CPU_STATUS_EXL) == 0u, "ERTN should clear EXL");
+        expect(s.cause == TrapCause::None, "ERTN should clear the latched cause");
     }
 
     void test_slt_program() {
@@ -220,6 +267,35 @@ namespace {
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[15] == config::UART_ADDR, "uart-e2e: r15 should be UART_ADDR");
         expect(capture.str() == "Hi!", "uart-e2e: UART output should be Hi!");
+    }
+
+    void test_timer_interrupt_program() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> timer_program_words = {
+            tests::ENC_1RI20(tests::OP_LU12I_W, 10, 0x1FE00),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 10, 10, 0x200),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 11, 0, 2),
+            tests::ENC_2RI12(tests::OP_ST_W, 11, 10, 4),
+            tests::ENC_2RI12(
+                tests::OP_ADDI_W,
+                11,
+                0,
+                static_cast<int32_t>(config::TIMER_CTRL_ENABLE_BIT | config::TIMER_CTRL_INTERRUPT_ENABLE_BIT)),
+            tests::ENC_2RI12(tests::OP_ST_W, 11, 10, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 12, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 13, 0, 2),
+        };
+
+        load_and_reset(ctx, timer_program_words);
+        load_exception_handler(ctx, make_counter_handler_words(30));
+        ctx.cpu.run(11);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[30] == 1u, "timer: handler should run exactly once");
+        expect(s.gpr[12] == 1u, "timer: pre-interrupt instruction should still retire");
+        expect(s.gpr[13] == 2u, "timer: ERTN should resume interrupted control flow");
+        expect((s.status & CPU_STATUS_EXL) == 0u, "timer: ERTN should clear EXL");
+        expect(s.cause == TrapCause::None, "timer: cause should be cleared after ERTN");
     }
 
     void test_pipeline_no_hazard_program() {
@@ -317,6 +393,53 @@ namespace {
         expect_contains(branch_trace, "\"id\":{\"state\":\"flushed\"", "branch trace should mark the flushed ID stage");
     }
 
+    void test_trap_trace_records() {
+        const std::vector<uint32_t> invalid_then_resume_words = {
+            0x00000000u,
+            tests::ENC_2RI12(tests::OP_ADDI_W, 9, 0, 7),
+        };
+        const std::vector<uint32_t> handler_words = make_counter_handler_words(30);
+
+        const std::string exception_trace = capture_trace_for_program(
+            invalid_then_resume_words,
+            1,
+            false,
+            config::PROGRAM_BASE,
+            handler_words
+        );
+        expect_contains(exception_trace, "\"exception\":true", "exception trace should mark exception steps");
+        expect_contains(exception_trace, "\"interrupt\":false", "exception trace should mark interrupt=false");
+        expect_contains(exception_trace, "\"cause\":\"invalid_instruction\"", "exception trace should record the invalid cause");
+        expect_contains(exception_trace, "\"epc\":\"0x00001004\"", "exception trace should record epc");
+        expect_contains(exception_trace, "\"vector\":\"0x00000080\"", "exception trace should record the vector");
+
+        const std::vector<uint32_t> timer_program_words = {
+            tests::ENC_1RI20(tests::OP_LU12I_W, 10, 0x1FE00),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 10, 10, 0x200),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 11, 0, 2),
+            tests::ENC_2RI12(tests::OP_ST_W, 11, 10, 4),
+            tests::ENC_2RI12(
+                tests::OP_ADDI_W,
+                11,
+                0,
+                static_cast<int32_t>(config::TIMER_CTRL_ENABLE_BIT | config::TIMER_CTRL_INTERRUPT_ENABLE_BIT)),
+            tests::ENC_2RI12(tests::OP_ST_W, 11, 10, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 12, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 13, 0, 2),
+        };
+
+        const std::string interrupt_trace = capture_trace_for_program(
+            timer_program_words,
+            8,
+            false,
+            config::PROGRAM_BASE,
+            handler_words
+        );
+        expect_contains(interrupt_trace, "\"interrupt\":true", "interrupt trace should mark interrupt steps");
+        expect_contains(interrupt_trace, "\"cause\":\"timer_interrupt\"", "interrupt trace should record the timer cause");
+        expect_contains(interrupt_trace, "\"vector\":\"0x00000080\"", "interrupt trace should record the vector");
+    }
+
 }  // namespace
 
 int main() {
@@ -335,12 +458,14 @@ int main() {
         test_slt_program();
         test_lu12i_program();
         test_uart_e2e_program();
+        test_timer_interrupt_program();
         test_pipeline_no_hazard_program();
         test_pipeline_raw_hazard_program();
         test_pipeline_forwarding_program();
         test_pipeline_load_use_program();
         test_pipeline_branch_program();
         test_pipeline_trace_records();
+        test_trap_trace_records();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;

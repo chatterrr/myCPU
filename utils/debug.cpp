@@ -22,6 +22,13 @@ namespace {
         bool has_uart = false;
         std::string uart_text;
 
+        bool has_trap = false;
+        bool trap_is_interrupt = false;
+        TrapCause trap_cause = TrapCause::None;
+        uint32_t trap_epc = 0;
+        uint32_t trap_vector = 0;
+        uint32_t trap_badv = 0;
+
         bool has_pipeline = false;
         TracePipelineInfo pipeline;
     };
@@ -41,11 +48,11 @@ namespace {
         for (char ch : s) {
             switch (ch) {
             case '\\': os << "\\\\"; break;
-            case '"':  os << "\\\""; break;
-            case '\n': os << "\\n";  break;
-            case '\r': os << "\\r";  break;
-            case '\t': os << "\\t";  break;
-            default:   os << ch;     break;
+            case '"': os << "\\\""; break;
+            case '\n': os << "\\n"; break;
+            case '\r': os << "\\r"; break;
+            case '\t': os << "\\t"; break;
+            default: os << ch; break;
             }
         }
         os << '"';
@@ -88,24 +95,49 @@ namespace {
 
 const char* opcode_to_string(Opcode op) {
     switch (op) {
-    case Opcode::ADD_W:    return "ADD_W";
-    case Opcode::SUB_W:    return "SUB_W";
-    case Opcode::ADDI_W:   return "ADDI_W";
-    case Opcode::SLT:      return "SLT";
-    case Opcode::AND:      return "AND";
-    case Opcode::OR:       return "OR";
-    case Opcode::XOR:      return "XOR";
-    case Opcode::LD_W:     return "LD_W";
-    case Opcode::ST_W:     return "ST_W";
-    case Opcode::B:        return "B";
-    case Opcode::BEQ:      return "BEQ";
-    case Opcode::BNE:      return "BNE";
-    case Opcode::BLT:      return "BLT";
-    case Opcode::BGE:      return "BGE";
-    case Opcode::BLTU:     return "BLTU";
-    case Opcode::BGEU:     return "BGEU";
-    case Opcode::LU12I_W:  return "LU12I_W";
-    case Opcode::INVALID:  return "INVALID";
+    case Opcode::ADD_W: return "ADD_W";
+    case Opcode::SUB_W: return "SUB_W";
+    case Opcode::ADDI_W: return "ADDI_W";
+    case Opcode::SLT: return "SLT";
+    case Opcode::SLTU: return "SLTU";
+    case Opcode::SLL_W: return "SLL_W";
+    case Opcode::SRL_W: return "SRL_W";
+    case Opcode::SRA_W: return "SRA_W";
+    case Opcode::AND: return "AND";
+    case Opcode::OR: return "OR";
+    case Opcode::XOR: return "XOR";
+    case Opcode::NOR: return "NOR";
+    case Opcode::SLTI: return "SLTI";
+    case Opcode::SLTUI: return "SLTUI";
+    case Opcode::ANDI: return "ANDI";
+    case Opcode::ORI: return "ORI";
+    case Opcode::XORI: return "XORI";
+    case Opcode::LD_W: return "LD_W";
+    case Opcode::ST_W: return "ST_W";
+    case Opcode::LD_B: return "LD_B";
+    case Opcode::LD_H: return "LD_H";
+    case Opcode::ST_B: return "ST_B";
+    case Opcode::ST_H: return "ST_H";
+    case Opcode::LD_BU: return "LD_BU";
+    case Opcode::LD_HU: return "LD_HU";
+    case Opcode::SLLI_W: return "SLLI_W";
+    case Opcode::SRLI_W: return "SRLI_W";
+    case Opcode::SRAI_W: return "SRAI_W";
+    case Opcode::B: return "B";
+    case Opcode::BEQ: return "BEQ";
+    case Opcode::BNE: return "BNE";
+    case Opcode::LU12I_W: return "LU12I_W";
+    case Opcode::PCADDU12I: return "PCADDU12I";
+    case Opcode::BLT: return "BLT";
+    case Opcode::BGE: return "BGE";
+    case Opcode::BLTU: return "BLTU";
+    case Opcode::BGEU: return "BGEU";
+    case Opcode::BL: return "BL";
+    case Opcode::JIRL: return "JIRL";
+    case Opcode::BREAK: return "BREAK";
+    case Opcode::SYSCALL: return "SYSCALL";
+    case Opcode::ERTN: return "ERTN";
+    case Opcode::INVALID: return "INVALID";
     }
     return "UNKNOWN";
 }
@@ -122,8 +154,14 @@ void dump_regs(const CPUState& cpu) {
     }
     std::cout << std::dec
         << "pc=0x" << std::hex << std::setw(8) << std::setfill('0') << cpu.pc
+        << " epc=0x" << std::setw(8) << cpu.epc
         << " last_inst=0x" << std::setw(8) << cpu.last_inst
+        << " vector=0x" << std::setw(8) << cpu.exception_vector_base
+        << " badv=0x" << std::setw(8) << cpu.badv
         << std::dec << " running=" << cpu.running
+        << " cause=" << trap_cause_to_string(cpu.cause)
+        << " status=0x" << std::hex << std::setw(8) << std::setfill('0') << cpu.status
+        << std::dec << " pending_interrupt=" << cpu.pending_interrupt
         << " exit_code=" << cpu.exit_code << "\n";
 
     std::cout.copyfmt(old_state);
@@ -181,6 +219,15 @@ void trace_note_uart_char(uint8_t ch) {
     g_trace_extras.uart_text.push_back(static_cast<char>(ch));
 }
 
+void trace_note_trap(bool interrupt, TrapCause cause, uint32_t epc, uint32_t vector, uint32_t badv) {
+    g_trace_extras.has_trap = true;
+    g_trace_extras.trap_is_interrupt = interrupt;
+    g_trace_extras.trap_cause = cause;
+    g_trace_extras.trap_epc = epc;
+    g_trace_extras.trap_vector = vector;
+    g_trace_extras.trap_badv = badv;
+}
+
 void trace_note_pipeline(const TracePipelineInfo& info) {
     g_trace_extras.has_pipeline = info.enabled;
     g_trace_extras.pipeline = info;
@@ -235,6 +282,54 @@ void trace_step_jsonl(
     write_json_string(os, hex_u32(after.pc));
     os << ",\"running\":" << (after.running ? "true" : "false")
         << ",\"exit_code\":" << after.exit_code;
+
+    os << ",\"exception\":";
+    if (g_trace_extras.has_trap) {
+        os << (g_trace_extras.trap_is_interrupt ? "false" : "true");
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"interrupt\":";
+    if (g_trace_extras.has_trap) {
+        os << (g_trace_extras.trap_is_interrupt ? "true" : "false");
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"cause\":";
+    if (g_trace_extras.has_trap) {
+        write_json_string(os, trap_cause_to_string(g_trace_extras.trap_cause));
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"epc\":";
+    if (g_trace_extras.has_trap) {
+        write_json_string(os, hex_u32(g_trace_extras.trap_epc));
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"vector\":";
+    if (g_trace_extras.has_trap) {
+        write_json_string(os, hex_u32(g_trace_extras.trap_vector));
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"badv\":";
+    if (g_trace_extras.has_trap) {
+        write_json_string(os, hex_u32(g_trace_extras.trap_badv));
+    }
+    else {
+        os << "null";
+    }
 
     os << ",\"branched\":";
     if (g_trace_extras.has_branch) {
@@ -321,7 +416,18 @@ void trace_summary_jsonl(const CPUState& cpu) {
     write_json_string(os, hex_u32(cpu.pc));
     os << ",\"last_inst\":";
     write_json_string(os, hex_u32(cpu.last_inst));
+    os << ",\"epc\":";
+    write_json_string(os, hex_u32(cpu.epc));
+    os << ",\"vector\":";
+    write_json_string(os, hex_u32(cpu.exception_vector_base));
+    os << ",\"badv\":";
+    write_json_string(os, hex_u32(cpu.badv));
+    os << ",\"cause\":";
+    write_json_string(os, trap_cause_to_string(cpu.cause));
+    os << ",\"status\":";
+    write_json_string(os, hex_u32(cpu.status));
     os << ",\"running\":" << (cpu.running ? "true" : "false")
+        << ",\"pending_interrupt\":" << (cpu.pending_interrupt ? "true" : "false")
         << ",\"exit_code\":" << cpu.exit_code
         << ",\"regs\":[";
 
