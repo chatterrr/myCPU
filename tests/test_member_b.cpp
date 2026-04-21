@@ -140,6 +140,28 @@ namespace {
         expect(capture.str() == "Hi!", "UART output mismatch");
     }
 
+    void test_timer_mapping() {
+        Memory mem(1024);
+        mem.write32(config::TIMER_ADDR + 4u, 2u);
+        mem.write32(
+            config::TIMER_ADDR,
+            config::TIMER_CTRL_ENABLE_BIT | config::TIMER_CTRL_INTERRUPT_ENABLE_BIT);
+
+        expect(mem.read32(config::TIMER_ADDR + 4u) == 2u, "timer interval register mismatch");
+        expect(mem.read32(config::TIMER_ADDR + 8u) == 2u, "timer remaining should preload from interval");
+
+        mem.tick_devices();
+        expect(!mem.has_pending_interrupt(), "timer should not interrupt before expiry");
+        expect(mem.read32(config::TIMER_ADDR + 8u) == 1u, "timer remaining should decrement after one tick");
+
+        mem.tick_devices();
+        expect(mem.has_pending_interrupt(), "timer should raise an interrupt at expiry");
+
+        const auto cause = mem.consume_pending_interrupt();
+        expect(cause.has_value(), "timer interrupt cause should be present");
+        expect(cause.value() == TrapCause::TimerInterrupt, "timer interrupt cause mismatch");
+    }
+
 }  // namespace
 
 int main() {
@@ -157,6 +179,7 @@ int main() {
         test_loader_empty_bin();
 
         test_uart_mapping();
+        test_timer_mapping();
 
         std::cout << "[PASS] member B support layer tests all passed.\n";
         return 0;

@@ -66,6 +66,7 @@ namespace {
 
     constexpr uint32_t OP_BREAK = 0b00000000001010100;
     constexpr uint32_t OP_SYSCALL = 0b00000000001010110;
+    constexpr uint32_t OP_ERTN_RAW = 0x06483800u;
 
     constexpr uint32_t OP_SLTI = 0b0000001000;
     constexpr uint32_t OP_SLTUI = 0b0000001001;
@@ -105,6 +106,11 @@ DecodedInst decode(uint32_t raw) {
     d.rk = 0;
     d.imm = 0;
     d.raw = raw;
+
+    if (raw == OP_ERTN_RAW) {
+        d.op = Opcode::ERTN;
+        return d;
+    }
 
     // 1) 3R-type
     {

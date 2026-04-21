@@ -51,6 +51,7 @@ namespace tests {
     constexpr uint32_t OP_BEQ = 0b010110;
     constexpr uint32_t OP_BNE = 0b010111;
     constexpr uint32_t OP_B = 0b010100;
+    constexpr uint32_t kErtnRaw = 0x06483800u;
 
     // ---------- expected step counts ----------
     inline constexpr uint64_t kArithProgramSteps = 4;

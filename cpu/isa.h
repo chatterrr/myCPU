@@ -1,26 +1,40 @@
 #pragma once
-#include<cstdint>
+
+#include <cstdint>
+
+#include "cpu/trap.h"
+
+inline constexpr uint32_t CPU_STATUS_IE = 1u << 0;
+inline constexpr uint32_t CPU_STATUS_EXL = 1u << 1;
 
 struct CPUState {
-    uint32_t gpr[32];
-    uint32_t pc;
-    bool running;
+    uint32_t gpr[32] = {};
+    uint32_t pc = 0;
+    bool running = false;
 
-    uint32_t last_inst;   // 最近执行的原始指令
-    int exit_code;        // 0 正常结束；非 0 表示异常退出
+    uint32_t epc = 0;
+    TrapCause cause = TrapCause::None;
+    uint32_t status = 0;
+    uint32_t exception_vector_base = 0;
+    uint32_t badv = 0;
+    bool pending_interrupt = false;
+    bool last_trap_was_interrupt = false;
+
+    uint32_t last_inst = 0;
+    int exit_code = 0;
 };
 
 enum class Opcode {
     ADD_W, SUB_W, ADDI_W, SLT, SLTU,
-    SLL_W,SRL_W,SRA_W,
+    SLL_W, SRL_W, SRA_W,
     AND, OR, XOR, NOR,
-    SLTI,SLTUI,ANDI,ORI,XORI,
+    SLTI, SLTUI, ANDI, ORI, XORI,
     LD_W, ST_W, LD_B, LD_H, ST_B, ST_H,
     LD_BU, LD_HU,
-    SLLI_W,SRLI_W,SRAI_W,
+    SLLI_W, SRLI_W, SRAI_W,
     B, BEQ, BNE, LU12I_W, PCADDU12I,
-    BLT,BGE,BLTU,BGEU,BL,JIRL,
-    BREAK,SYSCALL,
+    BLT, BGE, BLTU, BGEU, BL, JIRL,
+    BREAK, SYSCALL, ERTN,
     INVALID
 };
 

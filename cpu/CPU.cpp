@@ -6,13 +6,14 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <string>
 
 #include "config/constants.h"
 #include "utils/debug.h"
 
 namespace {
 
-    std::runtime_error make_invalid_instruction_error(uint32_t pc, uint32_t raw) {
+    std::string make_invalid_instruction_message(uint32_t pc, uint32_t raw) {
         char buf[128];
         std::snprintf(
             buf,
@@ -21,7 +22,7 @@ namespace {
             pc,
             raw
         );
-        return std::runtime_error(buf);
+        return std::string(buf);
     }
 
     bool pipeline_supported(const DecodedInst& inst) {
@@ -37,6 +38,7 @@ namespace {
         case Opcode::BGE:
         case Opcode::BLTU:
         case Opcode::BGEU:
+        case Opcode::ERTN:
             return true;
         default:
             return false;
@@ -67,6 +69,7 @@ namespace {
         case Opcode::BGE:
         case Opcode::BLTU:
         case Opcode::BGEU:
+        case Opcode::ERTN:
             return true;
         default:
             return false;
@@ -251,7 +254,8 @@ namespace {
     PipelineExecuteResult pipeline_execute_stage(
         const PipelineIDEX& stage,
         const PipelineEXMEM& ex_mem,
-        const PipelineMEMWB& mem_wb
+        const PipelineMEMWB& mem_wb,
+        const CPUState& state
     ) {
         PipelineExecuteResult result{};
         const uint32_t src1_value = pipeline_reads_rj(stage.inst)
@@ -308,6 +312,10 @@ namespace {
             result.branch_taken = (src1_value >= src2_value);
             result.branch_target = stage.pc + 4u + static_cast<uint32_t>(stage.inst.imm);
             return result;
+        case Opcode::ERTN:
+            result.branch_taken = true;
+            result.branch_target = state.epc;
+            return result;
         default:
             throw std::runtime_error("unsupported instruction reached pipeline EX stage");
         }
@@ -319,6 +327,13 @@ CPU::CPU(Memory& mem) : mem_(mem) {
     for (auto& reg : state_.gpr) reg = 0;
     state_.pc = 0;
     state_.running = false;
+    state_.epc = 0;
+    state_.cause = TrapCause::None;
+    state_.status = CPU_STATUS_IE;
+    state_.exception_vector_base = config::EXCEPTION_VECTOR_BASE;
+    state_.badv = 0;
+    state_.pending_interrupt = false;
+    state_.last_trap_was_interrupt = false;
     state_.last_inst = 0;
     state_.exit_code = 0;
     reset_pipeline();
@@ -328,12 +343,56 @@ void CPU::reset(uint32_t pc_start) {
     std::memset(state_.gpr, 0, sizeof(state_.gpr));
     state_.pc = pc_start;
     state_.running = true;
+    state_.epc = 0;
+    state_.cause = TrapCause::None;
+    state_.status = CPU_STATUS_IE;
+    state_.exception_vector_base = config::EXCEPTION_VECTOR_BASE;
+    state_.badv = 0;
+    state_.pending_interrupt = false;
+    state_.last_trap_was_interrupt = false;
     state_.last_inst = 0;
     state_.exit_code = 0;
 
     state_.gpr[3] = config::STACK_TOP;
     state_.gpr[0] = 0;
     reset_pipeline();
+}
+
+bool CPU::interrupts_enabled() const noexcept {
+    return (state_.status & CPU_STATUS_IE) != 0u;
+}
+
+bool CPU::exception_level_active() const noexcept {
+    return (state_.status & CPU_STATUS_EXL) != 0u;
+}
+
+void CPU::enter_trap(
+    TrapCause cause,
+    uint32_t trap_pc,
+    uint32_t resume_pc,
+    bool is_interrupt,
+    std::optional<uint32_t> badv) {
+    state_.epc = resume_pc;
+    state_.cause = cause;
+    state_.status |= CPU_STATUS_EXL;
+    state_.badv = badv.value_or(trap_pc);
+    state_.pending_interrupt = mem_.has_pending_interrupt();
+    state_.last_trap_was_interrupt = is_interrupt;
+    state_.pc = state_.exception_vector_base;
+}
+
+void CPU::handle_trap_exception(
+    const TrapException& ex,
+    uint32_t trap_pc,
+    uint32_t raw,
+    const DecodedInst& inst,
+    const CPUState& before) {
+    enter_trap(ex.cause(), trap_pc, trap_pc + 4u, false, ex.fault_addr());
+    state_.last_inst = raw;
+    state_.gpr[0] = 0;
+    reset_pipeline();
+    trace_note_trap(false, ex.cause(), state_.epc, state_.exception_vector_base, state_.badv);
+    trace_step_jsonl(trap_pc, raw, inst, before, state_);
 }
 
 void CPU::set_pipeline_mode(bool enabled) {
@@ -381,6 +440,28 @@ void CPU::advance_pipeline_skeleton(uint32_t fetched_pc, uint32_t fetched_raw) {
 }
 
 void CPU::step() {
+    if (!state_.running) {
+        return;
+    }
+
+    mem_.tick_devices();
+    state_.pending_interrupt = mem_.has_pending_interrupt();
+
+    if (state_.pending_interrupt && interrupts_enabled() && !exception_level_active()) {
+        const CPUState before = state_;
+        const uint32_t pc_before = state_.pc;
+        trace_begin_step();
+
+        const TrapCause cause = mem_.consume_pending_interrupt().value_or(TrapCause::TimerInterrupt);
+        enter_trap(cause, pc_before, pc_before, true);
+        state_.last_inst = 0;
+        state_.gpr[0] = 0;
+        reset_pipeline();
+        trace_note_trap(true, cause, state_.epc, state_.exception_vector_base, state_.badv);
+        trace_step_jsonl(pc_before, 0, make_invalid_decoded_inst(), before, state_);
+        return;
+    }
+
     if (pipeline_mode_) {
         step_pipeline_mode();
         return;
@@ -392,238 +473,271 @@ void CPU::step() {
 void CPU::step_single_cycle() {
     if (!state_.running) return;
 
-    if (state_.pc % 4 != 0) {
-        throw std::runtime_error("unaligned PC");
-    }
-
     const uint32_t pc_before = state_.pc;
     const CPUState before = state_;
-
-    uint32_t raw = mem_.read32(state_.pc);
-    state_.last_inst = raw;
-
-    DecodedInst inst = decode(raw);
-    if (inst.op == Opcode::INVALID) {
-        throw make_invalid_instruction_error(state_.pc, raw);
-    }
-
-    MYCPU_TRACE(dump_inst(pc_before, raw, inst));
+    uint32_t raw = 0;
+    DecodedInst inst = make_invalid_decoded_inst();
 
     trace_begin_step();
+    try {
+        if (state_.pc % 4 != 0) {
+            throw TrapException(TrapCause::UnalignedAccess, state_.pc, "unaligned PC");
+        }
 
-    execute(state_, inst, mem_);
+        raw = mem_.read32(state_.pc);
+        state_.last_inst = raw;
 
-    state_.gpr[0] = 0;
+        inst = decode(raw);
+        if (inst.op == Opcode::INVALID) {
+            throw TrapException(
+                TrapCause::InvalidInstruction,
+                state_.pc,
+                make_invalid_instruction_message(state_.pc, raw));
+        }
 
-    trace_step_jsonl(pc_before, raw, inst, before, state_);
+        MYCPU_TRACE(dump_inst(pc_before, raw, inst));
 
-    // Keep pipeline stage registers advancing without changing the stable execution path yet.
-    advance_pipeline_skeleton(pc_before, raw);
+        execute(state_, inst, mem_);
+
+        state_.gpr[0] = 0;
+
+        trace_step_jsonl(pc_before, raw, inst, before, state_);
+
+        // Keep pipeline stage registers advancing without changing the stable execution path yet.
+        advance_pipeline_skeleton(pc_before, raw);
+    }
+    catch (const TrapException& ex) {
+        handle_trap_exception(ex, pc_before, raw, inst, before);
+    }
 }
 
 void CPU::step_pipeline_mode() {
     if (!state_.running) return;
 
-    if (state_.pc % 4 != 0) {
-        throw std::runtime_error("unaligned PC");
-    }
-
     const CPUState before = state_;
     const uint32_t fetch_pc_before = state_.pc;
+    uint32_t trap_pc = fetch_pc_before;
+    uint32_t trap_raw = 0;
+    DecodedInst trap_inst = make_invalid_decoded_inst();
     trace_begin_step();
 
-    if (pipeline_.mem_wb.valid) {
-        if (pipeline_writes_back(pipeline_.mem_wb.inst)) {
-            state_.gpr[pipeline_.mem_wb.inst.rd] = pipeline_.mem_wb.write_value;
+    try {
+        if (state_.pc % 4 != 0) {
+            throw TrapException(TrapCause::UnalignedAccess, state_.pc, "unaligned PC");
         }
-        state_.last_inst = pipeline_.mem_wb.inst.raw;
-    }
 
-    PipelineState next{};
-    next.cycle = pipeline_.cycle + 1;
-
-    if (pipeline_.ex_mem.valid) {
-        next.mem_wb.valid = true;
-        next.mem_wb.pc = pipeline_.ex_mem.pc;
-        next.mem_wb.inst = pipeline_.ex_mem.inst;
-        if (pipeline_.ex_mem.inst.op == Opcode::LD_W) {
-            next.mem_wb.write_value = mem_.read32(pipeline_.ex_mem.alu_result);
+        if (pipeline_.mem_wb.valid) {
+            if (pipeline_writes_back(pipeline_.mem_wb.inst)) {
+                state_.gpr[pipeline_.mem_wb.inst.rd] = pipeline_.mem_wb.write_value;
+            }
+            state_.last_inst = pipeline_.mem_wb.inst.raw;
         }
-        else {
-            next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+
+        PipelineState next{};
+        next.cycle = pipeline_.cycle + 1;
+
+        if (pipeline_.ex_mem.valid) {
+            trap_pc = pipeline_.ex_mem.pc;
+            trap_raw = pipeline_.ex_mem.inst.raw;
+            trap_inst = pipeline_.ex_mem.inst;
+            next.mem_wb.valid = true;
+            next.mem_wb.pc = pipeline_.ex_mem.pc;
+            next.mem_wb.inst = pipeline_.ex_mem.inst;
+            if (pipeline_.ex_mem.inst.op == Opcode::LD_W) {
+                next.mem_wb.write_value = mem_.read32(pipeline_.ex_mem.alu_result);
+            }
+            else {
+                next.mem_wb.write_value = pipeline_.ex_mem.alu_result;
+            }
         }
-    }
 
-    bool flush_for_control_hazard = false;
-    uint32_t control_target_pc = state_.pc;
-    bool branch_resolved = false;
-    bool branch_taken = false;
+        bool flush_for_control_hazard = false;
+        uint32_t control_target_pc = state_.pc;
+        bool branch_resolved = false;
+        bool branch_taken = false;
 
-    if (pipeline_.id_ex.valid) {
-        next.ex_mem.valid = true;
-        next.ex_mem.pc = pipeline_.id_ex.pc;
-        next.ex_mem.inst = pipeline_.id_ex.inst;
-        const PipelineExecuteResult ex_result = pipeline_execute_stage(
-            pipeline_.id_ex,
-            pipeline_.ex_mem,
-            pipeline_.mem_wb
-        );
-        next.ex_mem.alu_result = ex_result.alu_result;
-        branch_resolved = pipeline_is_control_flow(pipeline_.id_ex.inst);
-        branch_taken = ex_result.branch_taken;
-        flush_for_control_hazard = ex_result.branch_taken;
-        control_target_pc = ex_result.branch_target;
-    }
-
-    if (branch_resolved) {
-        trace_note_branch(branch_taken);
-    }
-
-    bool stall_for_raw_hazard = false;
-    bool fetched_instruction = false;
-    uint32_t fetched_pc = fetch_pc_before;
-    uint32_t fetched_raw = 0;
-
-    if (!flush_for_control_hazard && pipeline_.if_id.valid) {
-        DecodedInst decoded = decode(pipeline_.if_id.raw);
-        if (decoded.op == Opcode::INVALID) {
-            throw make_invalid_instruction_error(pipeline_.if_id.pc, pipeline_.if_id.raw);
-        }
-        if (!pipeline_supported(decoded)) {
-            char buf[160];
-            std::snprintf(
-                buf,
-                sizeof(buf),
-                "pipeline mode currently supports ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU, got %s at pc=0x%08X",
-                opcode_to_string(decoded.op),
-                pipeline_.if_id.pc
+        if (pipeline_.id_ex.valid) {
+            trap_pc = pipeline_.id_ex.pc;
+            trap_raw = pipeline_.id_ex.inst.raw;
+            trap_inst = pipeline_.id_ex.inst;
+            next.ex_mem.valid = true;
+            next.ex_mem.pc = pipeline_.id_ex.pc;
+            next.ex_mem.inst = pipeline_.id_ex.inst;
+            const PipelineExecuteResult ex_result = pipeline_execute_stage(
+                pipeline_.id_ex,
+                pipeline_.ex_mem,
+                pipeline_.mem_wb,
+                state_
             );
-            throw std::runtime_error(buf);
+            next.ex_mem.alu_result = ex_result.alu_result;
+            branch_resolved = pipeline_is_control_flow(pipeline_.id_ex.inst);
+            branch_taken = ex_result.branch_taken;
+            flush_for_control_hazard = ex_result.branch_taken;
+            control_target_pc = ex_result.branch_target;
         }
 
-        // Stall only when the producer will still not have a usable value for the
-        // consumer's next EX stage. The current load-use case needs one bubble:
-        // EX computes the address first, then MEM/WB provides the loaded word.
-        stall_for_raw_hazard =
-            (pipeline_.id_ex.valid
-                && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst)
-                && !pipeline_can_forward_ex_mem_result(pipeline_.id_ex.inst))
-            || (pipeline_.ex_mem.valid
-                && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst)
-                && !pipeline_can_forward_mem_wb_result(pipeline_.ex_mem.inst));
-
-        if (!stall_for_raw_hazard) {
-            next.id_ex.valid = true;
-            next.id_ex.pc = pipeline_.if_id.pc;
-            next.id_ex.inst = decoded;
-            next.id_ex.src1_value = state_.gpr[decoded.rj];
-            next.id_ex.src2_value = state_.gpr[decoded.rk];
+        if (branch_resolved) {
+            trace_note_branch(branch_taken);
         }
-    }
 
-    if (flush_for_control_hazard) {
-        // Resolve control flow in EX and conservatively bubble the younger stages.
-        state_.pc = control_target_pc;
-    }
-    else if (stall_for_raw_hazard) {
-        next.if_id = pipeline_.if_id;
-    }
-    else {
-        fetched_pc = state_.pc;
-        fetched_raw = mem_.read32(fetched_pc);
-        fetched_instruction = true;
-        next.if_id.valid = true;
-        next.if_id.pc = fetched_pc;
-        next.if_id.raw = fetched_raw;
+        bool stall_for_raw_hazard = false;
+        bool fetched_instruction = false;
+        uint32_t fetched_pc = fetch_pc_before;
+        uint32_t fetched_raw = 0;
 
-        state_.pc = fetched_pc + 4;
-    }
+        if (!flush_for_control_hazard && pipeline_.if_id.valid) {
+            DecodedInst decoded = decode(pipeline_.if_id.raw);
+            trap_pc = pipeline_.if_id.pc;
+            trap_raw = pipeline_.if_id.raw;
+            trap_inst = decoded;
+            if (decoded.op == Opcode::INVALID) {
+                throw TrapException(
+                    TrapCause::InvalidInstruction,
+                    pipeline_.if_id.pc,
+                    make_invalid_instruction_message(pipeline_.if_id.pc, pipeline_.if_id.raw));
+            }
+            if (!pipeline_supported(decoded)) {
+                char buf[192];
+                std::snprintf(
+                    buf,
+                    sizeof(buf),
+                    "pipeline mode currently supports ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU/ERTN, got %s at pc=0x%08X",
+                    opcode_to_string(decoded.op),
+                    pipeline_.if_id.pc
+                );
+                throw std::runtime_error(buf);
+            }
 
-    TracePipelineInfo pipeline_trace{};
-    pipeline_trace.enabled = true;
-    pipeline_trace.cycle = pipeline_.cycle;
+            // Stall only when the producer will still not have a usable value for the
+            // consumer's next EX stage. The current load-use case needs one bubble:
+            // EX computes the address first, then MEM/WB provides the loaded word.
+            stall_for_raw_hazard =
+                (pipeline_.id_ex.valid
+                    && pipeline_has_raw_hazard(decoded, pipeline_.id_ex.inst)
+                    && !pipeline_can_forward_ex_mem_result(pipeline_.id_ex.inst))
+                || (pipeline_.ex_mem.valid
+                    && pipeline_has_raw_hazard(decoded, pipeline_.ex_mem.inst)
+                    && !pipeline_can_forward_mem_wb_result(pipeline_.ex_mem.inst));
 
-    if (fetched_instruction) {
-        pipeline_trace.if_stage = make_trace_stage_from_raw(fetched_pc, fetched_raw, "fetch");
-    }
-    else if (stall_for_raw_hazard) {
-        pipeline_trace.if_stage.state = "stalled";
-        pipeline_trace.if_stage.has_pc = true;
-        pipeline_trace.if_stage.pc = fetch_pc_before;
-    }
-    else if (flush_for_control_hazard) {
-        pipeline_trace.if_stage.state = "flushed";
-        pipeline_trace.if_stage.has_pc = true;
-        pipeline_trace.if_stage.pc = fetch_pc_before;
-    }
+            if (!stall_for_raw_hazard) {
+                next.id_ex.valid = true;
+                next.id_ex.pc = pipeline_.if_id.pc;
+                next.id_ex.inst = decoded;
+                next.id_ex.src1_value = state_.gpr[decoded.rj];
+                next.id_ex.src2_value = state_.gpr[decoded.rk];
+            }
+        }
 
-    if (pipeline_.if_id.valid) {
-        const char* id_state = "occupied";
         if (flush_for_control_hazard) {
-            id_state = "flushed";
+            // Resolve control flow in EX and conservatively bubble the younger stages.
+            state_.pc = control_target_pc;
         }
         else if (stall_for_raw_hazard) {
-            id_state = "stalled";
+            next.if_id = pipeline_.if_id;
         }
-        pipeline_trace.id_stage = make_trace_stage_from_raw(
-            pipeline_.if_id.pc,
-            pipeline_.if_id.raw,
-            id_state
+        else {
+            fetched_pc = state_.pc;
+            trap_pc = fetched_pc;
+            trap_raw = 0;
+            trap_inst = make_invalid_decoded_inst();
+            fetched_raw = mem_.read32(fetched_pc);
+            fetched_instruction = true;
+            next.if_id.valid = true;
+            next.if_id.pc = fetched_pc;
+            next.if_id.raw = fetched_raw;
+
+            state_.pc = fetched_pc + 4;
+        }
+
+        TracePipelineInfo pipeline_trace{};
+        pipeline_trace.enabled = true;
+        pipeline_trace.cycle = pipeline_.cycle;
+
+        if (fetched_instruction) {
+            pipeline_trace.if_stage = make_trace_stage_from_raw(fetched_pc, fetched_raw, "fetch");
+        }
+        else if (stall_for_raw_hazard) {
+            pipeline_trace.if_stage.state = "stalled";
+            pipeline_trace.if_stage.has_pc = true;
+            pipeline_trace.if_stage.pc = fetch_pc_before;
+        }
+        else if (flush_for_control_hazard) {
+            pipeline_trace.if_stage.state = "flushed";
+            pipeline_trace.if_stage.has_pc = true;
+            pipeline_trace.if_stage.pc = fetch_pc_before;
+        }
+
+        if (pipeline_.if_id.valid) {
+            const char* id_state = "occupied";
+            if (flush_for_control_hazard) {
+                id_state = "flushed";
+            }
+            else if (stall_for_raw_hazard) {
+                id_state = "stalled";
+            }
+            pipeline_trace.id_stage = make_trace_stage_from_raw(
+                pipeline_.if_id.pc,
+                pipeline_.if_id.raw,
+                id_state
+            );
+        }
+
+        if (pipeline_.id_ex.valid) {
+            pipeline_trace.ex_stage = make_trace_stage_from_inst(
+                pipeline_.id_ex.pc,
+                pipeline_.id_ex.inst,
+                "occupied"
+            );
+        }
+
+        if (pipeline_.ex_mem.valid) {
+            pipeline_trace.mem_stage = make_trace_stage_from_inst(
+                pipeline_.ex_mem.pc,
+                pipeline_.ex_mem.inst,
+                "occupied"
+            );
+        }
+
+        if (pipeline_.mem_wb.valid) {
+            pipeline_trace.wb_stage = make_trace_stage_from_inst(
+                pipeline_.mem_wb.pc,
+                pipeline_.mem_wb.inst,
+                "occupied"
+            );
+        }
+
+        if (stall_for_raw_hazard) {
+            pipeline_trace.stall = true;
+            pipeline_trace.stall_reason = "raw_hazard";
+            pipeline_trace.bubble_stages.push_back("EX");
+        }
+
+        if (flush_for_control_hazard) {
+            pipeline_trace.flush_stages.push_back("IF");
+            pipeline_trace.flush_stages.push_back("ID");
+        }
+
+        state_.gpr[0] = 0;
+        pipeline_ = next;
+
+        uint32_t trace_pc = fetch_pc_before;
+        uint32_t trace_raw = 0;
+        DecodedInst trace_inst = make_invalid_decoded_inst();
+        choose_trace_focus(
+            pipeline_,
+            fetched_instruction,
+            fetched_pc,
+            fetched_raw,
+            trace_pc,
+            trace_raw,
+            trace_inst
         );
+        trace_note_pipeline(pipeline_trace);
+        trace_step_jsonl(trace_pc, trace_raw, trace_inst, before, state_);
     }
-
-    if (pipeline_.id_ex.valid) {
-        pipeline_trace.ex_stage = make_trace_stage_from_inst(
-            pipeline_.id_ex.pc,
-            pipeline_.id_ex.inst,
-            "occupied"
-        );
+    catch (const TrapException& ex) {
+        handle_trap_exception(ex, trap_pc, trap_raw, trap_inst, before);
     }
-
-    if (pipeline_.ex_mem.valid) {
-        pipeline_trace.mem_stage = make_trace_stage_from_inst(
-            pipeline_.ex_mem.pc,
-            pipeline_.ex_mem.inst,
-            "occupied"
-        );
-    }
-
-    if (pipeline_.mem_wb.valid) {
-        pipeline_trace.wb_stage = make_trace_stage_from_inst(
-            pipeline_.mem_wb.pc,
-            pipeline_.mem_wb.inst,
-            "occupied"
-        );
-    }
-
-    if (stall_for_raw_hazard) {
-        pipeline_trace.stall = true;
-        pipeline_trace.stall_reason = "raw_hazard";
-        pipeline_trace.bubble_stages.push_back("EX");
-    }
-
-    if (flush_for_control_hazard) {
-        pipeline_trace.flush_stages.push_back("IF");
-        pipeline_trace.flush_stages.push_back("ID");
-    }
-
-    state_.gpr[0] = 0;
-    pipeline_ = next;
-
-    uint32_t trace_pc = fetch_pc_before;
-    uint32_t trace_raw = 0;
-    DecodedInst trace_inst = make_invalid_decoded_inst();
-    choose_trace_focus(
-        pipeline_,
-        fetched_instruction,
-        fetched_pc,
-        fetched_raw,
-        trace_pc,
-        trace_raw,
-        trace_inst
-    );
-    trace_note_pipeline(pipeline_trace);
-    trace_step_jsonl(trace_pc, trace_raw, trace_inst, before, state_);
 }
 
 void CPU::run(uint64_t max_steps) {
