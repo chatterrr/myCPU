@@ -38,19 +38,35 @@ namespace tests {
     constexpr uint32_t OP_ADD_W = 0b00000000000100000;
     constexpr uint32_t OP_SUB_W = 0b00000000000100010;
     constexpr uint32_t OP_SLT = 0b00000000000100100;
+    constexpr uint32_t OP_SLTU = 0b00000000000100101;
+    constexpr uint32_t OP_NOR = 0b00000000000101000;
     constexpr uint32_t OP_AND = 0b00000000000101001;
     constexpr uint32_t OP_OR = 0b00000000000101010;
     constexpr uint32_t OP_XOR = 0b00000000000101011;
+    constexpr uint32_t OP_SLLI_W = 0b00000000010000001;
+    constexpr uint32_t OP_SRLI_W = 0b00000000010001001;
+    constexpr uint32_t OP_SRAI_W = 0b00000000010010001;
+    constexpr uint32_t OP_BREAK = 0b00000000001010100;
+    constexpr uint32_t OP_SYSCALL = 0b00000000001010110;
 
     constexpr uint32_t OP_ADDI_W = 0b0000001010;
     constexpr uint32_t OP_LD_W = 0b0010100010;
     constexpr uint32_t OP_ST_W = 0b0010100110;
 
     constexpr uint32_t OP_LU12I_W = 0b0001010;
+    constexpr uint32_t OP_PCADDU12I = 0b0001110;
 
     constexpr uint32_t OP_BEQ = 0b010110;
     constexpr uint32_t OP_BNE = 0b010111;
     constexpr uint32_t OP_B = 0b010100;
+    constexpr uint32_t OP_BLT = 0b011000;
+    constexpr uint32_t OP_BGE = 0b011001;
+    constexpr uint32_t OP_BLTU = 0b011010;
+    constexpr uint32_t OP_BGEU = 0b011011;
+    constexpr uint32_t OP_BL = 0b010101;
+    constexpr uint32_t OP_JIRL = 0b010011;
+    constexpr uint32_t kBreakRaw = ENC_3R(OP_BREAK, 0, 0, 0);
+    constexpr uint32_t kSyscallRaw = ENC_3R(OP_SYSCALL, 0, 0, 0);
     constexpr uint32_t kErtnRaw = 0x06483800u;
 
     // ---------- expected step counts ----------
@@ -65,13 +81,20 @@ namespace tests {
     inline constexpr uint64_t kInvalidProgramSteps = 1;
 
     inline constexpr uint64_t kSltProgramSteps = 6;
+    inline constexpr uint64_t kSltuProgramSteps = 4;
+    inline constexpr uint64_t kNorProgramSteps = 4;
+    inline constexpr uint64_t kShiftImmediateProgramSteps = 5;
+    inline constexpr uint64_t kBranchCompareProgramSteps = 18;
+    inline constexpr uint64_t kBlProgramSteps = 2;
+    inline constexpr uint64_t kJirlProgramSteps = 4;
+    inline constexpr uint64_t kPcaddu12iProgramSteps = 1;
     inline constexpr uint64_t kLu12iProgramSteps = 3;
     inline constexpr uint64_t kUartProgramSteps = 8;
-inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
-inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
-inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
-inline constexpr uint64_t kPipelineLoadUseProgramSteps = 8;
-inline constexpr uint64_t kPipelineBranchProgramSteps = 14;
+    inline constexpr uint64_t kPipelineNoHazardProgramSteps = 14;
+    inline constexpr uint64_t kPipelineRawHazardProgramSteps = 7;
+    inline constexpr uint64_t kPipelineForwardingProgramSteps = 8;
+    inline constexpr uint64_t kPipelineLoadUseProgramSteps = 8;
+    inline constexpr uint64_t kPipelineBranchProgramSteps = 14;
 
     // ---------- split programs ----------
     inline const std::vector<uint32_t> kArithProgramWords = {
@@ -164,6 +187,69 @@ inline constexpr uint64_t kPipelineBranchProgramSteps = 14;
         ENC_3R(OP_SLT,    4, 2,  1),   // r4 = (2 < 1)  -> 0
         ENC_2RI12(OP_ADDI_W, 5, 0, -1),   // r5 = -1
         ENC_3R(OP_SLT,    7, 5,  1),   // r7 = (-1 < 1) -> 1
+    };
+
+    inline const std::vector<uint32_t> kSltuProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, -1),  // r1 = 0xFFFFFFFF
+        ENC_2RI12(OP_ADDI_W, 2, 0,  1),  // r2 = 1
+        ENC_3R(OP_SLTU, 3, 2, 1),        // r3 = (1 < 0xFFFFFFFF) -> 1
+        ENC_3R(OP_SLTU, 4, 1, 2),        // r4 = (0xFFFFFFFF < 1) -> 0
+    };
+
+    inline const std::vector<uint32_t> kNorProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, 12),  // r1 = 0x0000000C
+        ENC_2RI12(OP_ADDI_W, 2, 0,  2),  // r2 = 0x00000002
+        ENC_3R(OP_NOR, 3, 1, 2),         // r3 = ~(0xC | 0x2)
+        ENC_3R(OP_NOR, 4, 0, 0),         // r4 = ~0
+    };
+
+    inline const std::vector<uint32_t> kShiftImmediateProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0,   1),  // r1 = 1
+        ENC_3R(OP_SLLI_W, 2, 1, 4),       // r2 = 16
+        ENC_2RI12(OP_ADDI_W, 3, 0, -16),  // r3 = 0xFFFFFFF0
+        ENC_3R(OP_SRLI_W, 4, 3, 2),       // r4 = 0x3FFFFFFC
+        ENC_3R(OP_SRAI_W, 5, 3, 2),       // r5 = 0xFFFFFFFC
+    };
+
+    inline const std::vector<uint32_t> kBranchCompareProgramWords = {
+        ENC_2RI12(OP_ADDI_W, 1, 0, -1),   // r1 = -1
+        ENC_2RI12(OP_ADDI_W, 2, 0,  1),   // r2 = 1
+
+        ENC_2RI16(OP_BLT,  2, 1, 1),      // taken
+        ENC_2RI12(OP_ADDI_W, 20, 0, 1),   // skipped
+        ENC_2RI16(OP_BGE,  1, 2, 1),      // taken
+        ENC_2RI12(OP_ADDI_W, 21, 0, 1),   // skipped
+        ENC_2RI16(OP_BLTU, 1, 2, 1),      // taken
+        ENC_2RI12(OP_ADDI_W, 22, 0, 1),   // skipped
+        ENC_2RI16(OP_BGEU, 2, 1, 1),      // taken
+        ENC_2RI12(OP_ADDI_W, 23, 0, 1),   // skipped
+
+        ENC_2RI16(OP_BLT,  1, 2, 1),      // not taken
+        ENC_2RI12(OP_ADDI_W, 24, 0, 1),   // executed
+        ENC_2RI16(OP_BGE,  2, 1, 1),      // not taken
+        ENC_2RI12(OP_ADDI_W, 25, 0, 1),   // executed
+        ENC_2RI16(OP_BLTU, 2, 1, 1),      // not taken
+        ENC_2RI12(OP_ADDI_W, 26, 0, 1),   // executed
+        ENC_2RI16(OP_BGEU, 1, 2, 1),      // not taken
+        ENC_2RI12(OP_ADDI_W, 27, 0, 1),   // executed
+    };
+
+    inline const std::vector<uint32_t> kBlProgramWords = {
+        ENC_I26(OP_BL, 1),                // jump over the next instruction
+        ENC_2RI12(OP_ADDI_W, 20, 0, 1),   // skipped
+        ENC_2RI12(OP_ADDI_W, 7, 0, 42),   // executed after the link
+    };
+
+    inline const std::vector<uint32_t> kJirlProgramWords = {
+        ENC_1RI20(OP_LU12I_W, 6, 0x1),    // r6 = 0x00001000
+        ENC_2RI12(OP_ADDI_W,  6, 6, 16),  // r6 = 0x00001010
+        ENC_2RI16(OP_JIRL,    5, 6, 0),   // r5 = 0x0000100C, pc = 0x00001010
+        ENC_2RI12(OP_ADDI_W, 20, 0, 1),   // skipped
+        ENC_2RI12(OP_ADDI_W,  7, 0, 42),  // jump target
+    };
+
+    inline const std::vector<uint32_t> kPcaddu12iProgramWords = {
+        ENC_1RI20(OP_PCADDU12I, 8, 0x1),  // r8 = pc + 0x00001000
     };
 
     // 11) lu12i.w

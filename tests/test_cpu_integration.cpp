@@ -253,6 +253,134 @@ namespace {
         expect(s.gpr[0] == 0, "lu12i: r0 must stay zero");
     }
 
+    void test_sltu_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kSltuProgramWords);
+        ctx.cpu.run(tests::kSltuProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[1] == 0xFFFFFFFFu, "sltu: r1 should be 0xFFFFFFFF");
+        expect(s.gpr[2] == 1u, "sltu: r2 should be 1");
+        expect(s.gpr[3] == 1u, "sltu: r3 should be 1");
+        expect(s.gpr[4] == 0u, "sltu: r4 should be 0");
+    }
+
+    void test_nor_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kNorProgramWords);
+        ctx.cpu.run(tests::kNorProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[3] == 0xFFFFFFF1u, "nor: r3 should be ~(0xC | 0x2)");
+        expect(s.gpr[4] == 0xFFFFFFFFu, "nor: r4 should be all ones");
+    }
+
+    void test_shift_immediate_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kShiftImmediateProgramWords);
+        ctx.cpu.run(tests::kShiftImmediateProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[2] == 16u, "shift-imm: SLLI_W should shift left by 4");
+        expect(s.gpr[4] == 0x3FFFFFFCu, "shift-imm: SRLI_W should zero-fill");
+        expect(s.gpr[5] == 0xFFFFFFFCu, "shift-imm: SRAI_W should sign-extend");
+    }
+
+    void test_branch_compare_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kBranchCompareProgramWords);
+        ctx.cpu.run(tests::kBranchCompareProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[20] == 0u, "branch-compare: BLT taken should skip r20 write");
+        expect(s.gpr[21] == 0u, "branch-compare: BGE taken should skip r21 write");
+        expect(s.gpr[22] == 0u, "branch-compare: BLTU taken should skip r22 write");
+        expect(s.gpr[23] == 0u, "branch-compare: BGEU taken should skip r23 write");
+        expect(s.gpr[24] == 1u, "branch-compare: BLT not-taken path should execute");
+        expect(s.gpr[25] == 1u, "branch-compare: BGE not-taken path should execute");
+        expect(s.gpr[26] == 1u, "branch-compare: BLTU not-taken path should execute");
+        expect(s.gpr[27] == 1u, "branch-compare: BGEU not-taken path should execute");
+    }
+
+    void test_bl_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kBlProgramWords);
+        ctx.cpu.run(tests::kBlProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[1] == config::PROGRAM_BASE + 4u, "bl: r1 should capture the return address");
+        expect(s.gpr[20] == 0u, "bl: skipped instruction must not run");
+        expect(s.gpr[7] == 42u, "bl: branch target should execute");
+    }
+
+    void test_jirl_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kJirlProgramWords);
+        ctx.cpu.run(tests::kJirlProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[5] == config::PROGRAM_BASE + 12u, "jirl: rd should capture the return address");
+        expect(s.gpr[20] == 0u, "jirl: skipped instruction must not run");
+        expect(s.gpr[7] == 42u, "jirl: jump target should execute");
+    }
+
+    void test_pcaddu12i_program() {
+        ProgramContext ctx;
+        load_and_reset(ctx, tests::kPcaddu12iProgramWords);
+        ctx.cpu.run(tests::kPcaddu12iProgramSteps);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[8] == (config::PROGRAM_BASE + 0x1000u), "pcaddu12i: result should be pc + (imm << 12)");
+    }
+
+    void run_trap_resume_test(
+        const std::vector<uint32_t>& words,
+        TrapCause expected_cause,
+        const std::string& label
+    ) {
+        ProgramContext ctx;
+        load_and_reset(ctx, words);
+        load_exception_handler(ctx, make_counter_handler_words(30));
+
+        ctx.cpu.step();
+        expect_trap_state(
+            ctx.cpu.state(),
+            expected_cause,
+            config::PROGRAM_BASE + 4u,
+            config::PROGRAM_BASE,
+            label);
+
+        ctx.cpu.step();
+        ctx.cpu.step();
+        ctx.cpu.step();
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[30] == 1u, label + ": handler should increment the trap counter");
+        expect(s.gpr[9] == 7u, label + ": ERTN should resume at the saved epc");
+        expect((s.status & CPU_STATUS_EXL) == 0u, label + ": ERTN should clear EXL");
+        expect(s.cause == TrapCause::None, label + ": ERTN should clear the latched cause");
+    }
+
+    void test_break_program() {
+        run_trap_resume_test(
+            {
+                tests::kBreakRaw,
+                tests::ENC_2RI12(tests::OP_ADDI_W, 9, 0, 7),
+            },
+            TrapCause::Breakpoint,
+            "break");
+    }
+
+    void test_syscall_program() {
+        run_trap_resume_test(
+            {
+                tests::kSyscallRaw,
+                tests::ENC_2RI12(tests::OP_ADDI_W, 9, 0, 7),
+            },
+            TrapCause::Syscall,
+            "syscall");
+    }
+
     void test_uart_e2e_program() {
         ProgramContext ctx;
         load_and_reset(ctx, tests::kUartProgramWords);
@@ -370,6 +498,61 @@ namespace {
         expect(s.gpr[22] == 0, "pipeline-branch: r22 should remain 0 after flush");
     }
 
+    void test_pipeline_ertn_resume_program() {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(true);
+        const std::vector<uint32_t> words = {
+            0x00000000u,
+            tests::ENC_2RI12(tests::OP_ADDI_W, 9, 0, 7),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+        };
+
+        load_and_reset(ctx, words);
+        load_exception_handler(ctx, make_counter_handler_words(30));
+        ctx.cpu.run(12);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[30] == 1u, "pipeline-ertn: handler should run exactly once");
+        expect(s.gpr[9] == 7u, "pipeline-ertn: ERTN should resume at the saved epc");
+        expect((s.status & CPU_STATUS_EXL) == 0u, "pipeline-ertn: ERTN should clear EXL");
+        expect(s.cause == TrapCause::None, "pipeline-ertn: cause should be cleared after ERTN");
+    }
+
+    void test_pipeline_rejects_interpreter_only_instruction() {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(true);
+        const std::vector<uint32_t> words = {
+            tests::ENC_3R(tests::OP_OR, 1, 0, 0),
+        };
+
+        load_and_reset(ctx, words);
+
+        bool thrown = false;
+        try {
+            ctx.cpu.run(2);
+        }
+        catch (const std::runtime_error& ex) {
+            thrown = true;
+            expect_contains(
+                ex.what(),
+                "pipeline teaching mode currently supports",
+                "pipeline boundary message should explain the supported subset");
+            expect_contains(
+                ex.what(),
+                "got OR",
+                "pipeline boundary message should name the rejected opcode");
+        }
+
+        expect(thrown, "pipeline boundary test should throw on interpreter-only instructions");
+        expect(ctx.cpu.state().exit_code == 1, "pipeline boundary test should set exit_code=1");
+        expect(!ctx.cpu.state().running, "pipeline boundary test should stop the CPU");
+    }
+
     void test_pipeline_trace_records() {
         const std::string load_use_trace = capture_trace_for_program(
             tests::kPipelineLoadUseProgramWords,
@@ -391,6 +574,14 @@ namespace {
         );
         expect_contains(branch_trace, "\"flush\":[\"IF\",\"ID\"]", "branch trace should record flushed younger stages");
         expect_contains(branch_trace, "\"id\":{\"state\":\"flushed\"", "branch trace should mark the flushed ID stage");
+
+        const std::string compare_trace = capture_trace_for_program(
+            tests::kBranchCompareProgramWords,
+            tests::kBranchCompareProgramSteps,
+            false
+        );
+        expect_contains(compare_trace, "\"branched\":true", "branch trace should record taken branches");
+        expect_contains(compare_trace, "\"branched\":false", "branch trace should record not-taken branches");
     }
 
     void test_trap_trace_records() {
@@ -438,6 +629,16 @@ namespace {
         expect_contains(interrupt_trace, "\"interrupt\":true", "interrupt trace should mark interrupt steps");
         expect_contains(interrupt_trace, "\"cause\":\"timer_interrupt\"", "interrupt trace should record the timer cause");
         expect_contains(interrupt_trace, "\"vector\":\"0x00000080\"", "interrupt trace should record the vector");
+
+        const std::string jirl_trace = capture_trace_for_program(
+            tests::kJirlProgramWords,
+            3,
+            false
+        );
+        expect_contains(
+            jirl_trace,
+            "\"op\":\"JIRL\",\"rd\":5,\"rj\":6,\"rk\":0",
+            "JIRL trace should use rd for the link register");
     }
 
 }  // namespace
@@ -456,7 +657,16 @@ int main() {
         test_invalid_program();
 
         test_slt_program();
+        test_sltu_program();
+        test_nor_program();
+        test_shift_immediate_program();
+        test_branch_compare_program();
+        test_bl_program();
+        test_jirl_program();
+        test_pcaddu12i_program();
         test_lu12i_program();
+        test_break_program();
+        test_syscall_program();
         test_uart_e2e_program();
         test_timer_interrupt_program();
         test_pipeline_no_hazard_program();
@@ -464,6 +674,8 @@ int main() {
         test_pipeline_forwarding_program();
         test_pipeline_load_use_program();
         test_pipeline_branch_program();
+        test_pipeline_ertn_resume_program();
+        test_pipeline_rejects_interpreter_only_instruction();
         test_pipeline_trace_records();
         test_trap_trace_records();
 
