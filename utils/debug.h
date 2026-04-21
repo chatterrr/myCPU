@@ -43,6 +43,7 @@ void trace_begin_step();
 void trace_note_branch(bool taken);
 void trace_note_mem_write(uint32_t addr, uint32_t value);
 void trace_note_uart_char(uint8_t ch);
+void trace_note_trap(bool interrupt, TrapCause cause, uint32_t epc, uint32_t vector, uint32_t badv);
 void trace_note_pipeline(const TracePipelineInfo& info);
 
 void trace_meta_jsonl(

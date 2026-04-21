@@ -110,6 +110,12 @@ class TraceModel:
 
     def get_step_title(self, index: int) -> str:
         step = self.steps[index]
+        cause = step.get("cause")
+        if cause is not None:
+            label = "INT" if step.get("interrupt") is True else "EXC"
+            step_no = step.get("step", index)
+            pc = step.get("pc", "N/A")
+            return f"{step_no:>3}  {pc:<12}  {label}:{cause}"
         pipeline = step.get("pipeline")
         if isinstance(pipeline, dict):
             cycle = pipeline.get("cycle", index)
@@ -238,6 +244,12 @@ class TraceViewerApp:
         self.running_var = tk.StringVar(value="-")
         self.exit_code_var = tk.StringVar(value="-")
         self.branched_var = tk.StringVar(value="-")
+        self.exception_var = tk.StringVar(value="-")
+        self.interrupt_var = tk.StringVar(value="-")
+        self.cause_var = tk.StringVar(value="-")
+        self.epc_var = tk.StringVar(value="-")
+        self.vector_var = tk.StringVar(value="-")
+        self.badv_var = tk.StringVar(value="-")
         self.gpr_changes_var = tk.StringVar(value="-")
         self.mem_write_var = tk.StringVar(value="-")
         self.uart_step_var = tk.StringVar(value="-")
@@ -254,9 +266,15 @@ class TraceViewerApp:
         self._add_kv(detail_box, 4, "Running", self.running_var, 2)
         self._add_kv(detail_box, 5, "Exit code", self.exit_code_var, 0)
         self._add_kv(detail_box, 5, "Branched", self.branched_var, 2)
-        self._add_kv(detail_box, 6, "UART(step)", self.uart_step_var, 0, span=4)
-        self._add_kv(detail_box, 7, "GPR changes", self.gpr_changes_var, 0, span=4)
-        self._add_kv(detail_box, 8, "Mem write", self.mem_write_var, 0, span=4)
+        self._add_kv(detail_box, 6, "Exception", self.exception_var, 0)
+        self._add_kv(detail_box, 6, "Interrupt", self.interrupt_var, 2)
+        self._add_kv(detail_box, 7, "Cause", self.cause_var, 0)
+        self._add_kv(detail_box, 7, "EPC", self.epc_var, 2)
+        self._add_kv(detail_box, 8, "Vector", self.vector_var, 0)
+        self._add_kv(detail_box, 8, "BadV", self.badv_var, 2)
+        self._add_kv(detail_box, 9, "UART(step)", self.uart_step_var, 0, span=4)
+        self._add_kv(detail_box, 10, "GPR changes", self.gpr_changes_var, 0, span=4)
+        self._add_kv(detail_box, 11, "Mem write", self.mem_write_var, 0, span=4)
 
         pipeline_box = ttk.LabelFrame(right_frame, text="Pipeline", padding=8)
         pipeline_box.grid(row=2, column=0, sticky="ew", pady=(0, 8))
@@ -487,6 +505,12 @@ class TraceViewerApp:
         self.running_var.set(str(step.get("running", "-")))
         self.exit_code_var.set(str(step.get("exit_code", "-")))
         self.branched_var.set(str(step.get("branched", "-")))
+        self.exception_var.set(str(step.get("exception", "-")))
+        self.interrupt_var.set(str(step.get("interrupt", "-")))
+        self.cause_var.set(str(step.get("cause", "-")))
+        self.epc_var.set(str(step.get("epc", "-")))
+        self.vector_var.set(str(step.get("vector", "-")))
+        self.badv_var.set(str(step.get("badv", "-")))
         self.uart_step_var.set(str(step.get("uart", "-")))
 
         changes = step.get("gpr_changes") or []

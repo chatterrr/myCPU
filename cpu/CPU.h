@@ -1,4 +1,7 @@
 #pragma once
+
+#include <optional>
+
 #include <cstdint>
 #include "isa.h"
 
@@ -15,6 +18,20 @@ public:
     const CPUState& state() const;
 
 private:
+    bool interrupts_enabled() const noexcept;
+    bool exception_level_active() const noexcept;
+    void enter_trap(
+        TrapCause cause,
+        uint32_t trap_pc,
+        uint32_t resume_pc,
+        bool is_interrupt,
+        std::optional<uint32_t> badv = std::nullopt);
+    void handle_trap_exception(
+        const TrapException& ex,
+        uint32_t trap_pc,
+        uint32_t raw,
+        const DecodedInst& inst,
+        const CPUState& before);
     void reset_pipeline();
     void advance_pipeline_skeleton(uint32_t fetched_pc, uint32_t fetched_raw);
     void step_single_cycle();
