@@ -379,8 +379,8 @@ DecodedInst decode(uint32_t raw) {
         }
         if (op == OP_JIRL) {
             d.op = Opcode::JIRL;
+            d.rd = get_rd(raw);
             d.rj = get_rj(raw);
-            d.rk = get_rd(raw);
             d.imm = imm_i16(raw) << 2;
             return d;
         }

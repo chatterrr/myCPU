@@ -25,6 +25,12 @@ namespace {
         return std::string(buf);
     }
 
+    constexpr const char* kPipelineTeachingSupportSummary =
+        "ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU/ERTN";
+
+    // Keep the teaching pipeline surface intentionally narrower than execute():
+    // single-cycle mode is the reference implementation, while pipeline mode
+    // only exposes the milestone-validated subset documented for class demos.
     bool pipeline_supported(const DecodedInst& inst) {
         switch (inst.op) {
         case Opcode::ADD_W:
@@ -69,7 +75,6 @@ namespace {
         case Opcode::BGE:
         case Opcode::BLTU:
         case Opcode::BGEU:
-        case Opcode::ERTN:
             return true;
         default:
             return false;
@@ -135,6 +140,7 @@ namespace {
         case Opcode::BGE:
         case Opcode::BLTU:
         case Opcode::BGEU:
+        case Opcode::ERTN:
             return true;
         default:
             return false;
@@ -574,6 +580,13 @@ void CPU::step_pipeline_mode() {
             branch_taken = ex_result.branch_taken;
             flush_for_control_hazard = ex_result.branch_taken;
             control_target_pc = ex_result.branch_target;
+
+            if (pipeline_.id_ex.inst.op == Opcode::ERTN) {
+                state_.status &= ~CPU_STATUS_EXL;
+                state_.pending_interrupt = false;
+                state_.last_trap_was_interrupt = false;
+                state_.cause = TrapCause::None;
+            }
         }
 
         if (branch_resolved) {
@@ -597,11 +610,12 @@ void CPU::step_pipeline_mode() {
                     make_invalid_instruction_message(pipeline_.if_id.pc, pipeline_.if_id.raw));
             }
             if (!pipeline_supported(decoded)) {
-                char buf[192];
+                char buf[256];
                 std::snprintf(
                     buf,
                     sizeof(buf),
-                    "pipeline mode currently supports ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU/ERTN, got %s at pc=0x%08X",
+                    "pipeline teaching mode currently supports %s; got %s at pc=0x%08X",
+                    kPipelineTeachingSupportSummary,
                     opcode_to_string(decoded.op),
                     pipeline_.if_id.pc
                 );

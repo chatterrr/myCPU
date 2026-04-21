@@ -211,7 +211,7 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
 
     case Opcode::JIRL: {
         trace_note_branch(true);
-        s.gpr[in.rk] = pc0 + 4;
+        s.gpr[in.rd] = pc0 + 4;
         s.pc = s.gpr[in.rj] + static_cast<uint32_t>(in.imm);
         break;
     }
