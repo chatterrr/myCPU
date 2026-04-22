@@ -108,20 +108,16 @@ export function TrafficIntersectionBoard({
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-            主舞台
-          </p>
-          <p className="mt-2 text-xl font-semibold text-slate-50">
-            方块堆栈
-          </p>
+          <p className="text-xs tracking-[0.24em] text-slate-400">主棋盘</p>
+          <p className="mt-2 text-xl font-semibold text-slate-50">方块堆栈</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {[
-            "← / A 左移",
-            "→ / D 右移",
-            "↑ / W 旋转",
-            "↓ / S 加速",
+            "Left / A 左移",
+            "Right / D 右移",
+            "Up / W 旋转",
+            "Down / S 加速",
             "Space 硬降",
             "P 暂停"
           ].map((item) => (
@@ -210,7 +206,7 @@ export function TrafficIntersectionBoard({
           {(session.paused || session.gameOver) ? (
             <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-slate-950/72 backdrop-blur-sm">
               <div className="rounded-[24px] border border-rose-300/24 bg-black/45 px-8 py-6 text-center shadow-[0_0_36px_rgba(251,113,133,0.16)]">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                <p className="text-xs tracking-[0.24em] text-slate-400">
                   {session.gameOver ? "本局结束" : "已暂停"}
                 </p>
                 <p className="mt-3 text-3xl font-semibold text-slate-50">

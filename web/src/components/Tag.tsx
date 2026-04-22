@@ -16,7 +16,7 @@ const toneClasses: Record<TagTone, string> = {
 export function Tag({ label, tone = "neutral" }: TagProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] ${toneClasses[tone]}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium tracking-[0.12em] ${toneClasses[tone]}`}
     >
       {label}
     </span>

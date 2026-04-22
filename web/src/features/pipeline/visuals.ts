@@ -32,7 +32,10 @@ const stateLabelMap: Record<string, string> = {
   occupied: "占用",
   stalled: "停顿",
   flushed: "冲刷",
-  bubble: "气泡"
+  bubble: "气泡",
+  locked: "锁定",
+  cleared: "消行",
+  falling: "下落"
 };
 
 const stageLabelMap: Record<PipelineStageKey, string> = {
@@ -200,11 +203,11 @@ export function getRegisterActivities(step: TraceStepRecord): RegisterActivity[]
   const activities: RegisterActivity[] = [];
 
   if (step.rj !== null && step.rj !== undefined) {
-    activities.push({ reg: step.rj, kind: "read", label: "读 rj" });
+    activities.push({ reg: step.rj, kind: "read", label: "读取 rj" });
   }
 
   if (step.rk !== null && step.rk !== undefined) {
-    activities.push({ reg: step.rk, kind: "read", label: "读 rk" });
+    activities.push({ reg: step.rk, kind: "read", label: "读取 rk" });
   }
 
   if (step.rd !== null && step.rd !== undefined) {
@@ -233,7 +236,7 @@ export function describePipelinePulse(
 
   if (step.pipeline?.stall) {
     return {
-      label: step.pipeline.stall_reason ? "停拍等数" : "停顿",
+      label: step.pipeline.stall_reason ? "停拍等待数据" : "发生停顿",
       tone: "amber"
     };
   }
@@ -243,7 +246,7 @@ export function describePipelinePulse(
   }
 
   if (preferredTone === "cyan") {
-    return { label: "旁路继续", tone: "cyan" };
+    return { label: "旁路继续推进", tone: "cyan" };
   }
 
   if (preferredTone === "emerald") {
@@ -255,7 +258,7 @@ export function describePipelinePulse(
   }
 
   if (preferredTone === "amber") {
-    return { label: "停顿缓冲", tone: "amber" };
+    return { label: "等待缓冲", tone: "amber" };
   }
 
   return { label: "逐拍推进", tone: "emerald" };

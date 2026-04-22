@@ -7,6 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "config/constants.h"
 #include "utils/debug.h"
@@ -152,7 +153,9 @@ namespace {
         uint32_t reg_index,
         uint32_t latched_value,
         const PipelineEXMEM& ex_mem,
-        const PipelineMEMWB& mem_wb
+        const PipelineMEMWB& mem_wb,
+        std::vector<TracePipelineForwarding>* forwarding,
+        const char* operand_name
     ) {
         if (reg_index == 0) {
             return 0;
@@ -161,12 +164,30 @@ namespace {
         if (ex_mem.valid
             && pipeline_can_forward_ex_mem_result(ex_mem.inst)
             && ex_mem.inst.rd == reg_index) {
+            if (forwarding != nullptr) {
+                forwarding->push_back(TracePipelineForwarding{
+                    "MEM",
+                    "EX",
+                    (operand_name != nullptr) ? operand_name : "operand",
+                    reg_index,
+                    ex_mem.alu_result
+                });
+            }
             return ex_mem.alu_result;
         }
 
         if (mem_wb.valid
             && pipeline_can_forward_mem_wb_result(mem_wb.inst)
             && mem_wb.inst.rd == reg_index) {
+            if (forwarding != nullptr) {
+                forwarding->push_back(TracePipelineForwarding{
+                    "WB",
+                    "EX",
+                    (operand_name != nullptr) ? operand_name : "operand",
+                    reg_index,
+                    mem_wb.write_value
+                });
+            }
             return mem_wb.write_value;
         }
 
@@ -257,6 +278,7 @@ namespace {
         bool branch_taken = false;
         uint32_t branch_target = 0;
         bool halt_requested = false;
+        std::vector<TracePipelineForwarding> forwarding;
     };
 
     PipelineExecuteResult pipeline_execute_stage(
@@ -267,10 +289,22 @@ namespace {
     ) {
         PipelineExecuteResult result{};
         const uint32_t src1_value = pipeline_reads_rj(stage.inst)
-            ? pipeline_forward_operand(stage.inst.rj, stage.src1_value, ex_mem, mem_wb)
+            ? pipeline_forward_operand(
+                stage.inst.rj,
+                stage.src1_value,
+                ex_mem,
+                mem_wb,
+                &result.forwarding,
+                "src1")
             : stage.src1_value;
         const uint32_t src2_value = pipeline_reads_rk(stage.inst)
-            ? pipeline_forward_operand(stage.inst.rk, stage.src2_value, ex_mem, mem_wb)
+            ? pipeline_forward_operand(
+                stage.inst.rk,
+                stage.src2_value,
+                ex_mem,
+                mem_wb,
+                &result.forwarding,
+                "src2")
             : stage.src2_value;
 
         switch (stage.inst.op) {
@@ -381,7 +415,7 @@ bool CPU::exception_level_active() const noexcept {
 
 bool CPU::has_exception_handler() const {
     try {
-        return mem_.read32(state_.exception_vector_base) != 0u;
+        return mem_.fetch32(state_.exception_vector_base) != 0u;
     }
     catch (const TrapException&) {
         return false;
@@ -423,6 +457,7 @@ void CPU::handle_trap_exception(
         stop_cpu(CPUState::StopReason::TrapTerminated, 1);
     }
     trace_note_trap(false, ex.cause(), state_.epc, state_.exception_vector_base, state_.badv);
+    trace_note_timer_snapshot(mem_.timer_snapshot());
     trace_step_jsonl(trap_pc, raw, inst, before, state_);
 }
 
@@ -475,13 +510,13 @@ void CPU::step() {
         return;
     }
 
+    trace_begin_step();
     mem_.tick_devices();
     state_.pending_interrupt = mem_.has_pending_interrupt();
 
     if (state_.pending_interrupt && interrupts_enabled() && !exception_level_active()) {
         const CPUState before = state_;
         const uint32_t pc_before = state_.pc;
-        trace_begin_step();
 
         const TrapCause cause = mem_.consume_pending_interrupt().value_or(TrapCause::TimerInterrupt);
         enter_trap(cause, pc_before, pc_before, true);
@@ -492,6 +527,7 @@ void CPU::step() {
             stop_cpu(CPUState::StopReason::TrapTerminated, 1);
         }
         trace_note_trap(true, cause, state_.epc, state_.exception_vector_base, state_.badv);
+        trace_note_timer_snapshot(mem_.timer_snapshot());
         trace_step_jsonl(pc_before, 0, make_invalid_decoded_inst(), before, state_);
         return;
     }
@@ -512,13 +548,12 @@ void CPU::step_single_cycle() {
     uint32_t raw = 0;
     DecodedInst inst = make_invalid_decoded_inst();
 
-    trace_begin_step();
     try {
         if (state_.pc % 4 != 0) {
             throw TrapException(TrapCause::UnalignedAccess, state_.pc, "unaligned PC");
         }
 
-        raw = mem_.read32(state_.pc);
+        raw = mem_.fetch32(state_.pc);
         state_.last_inst = raw;
 
         inst = decode(raw);
@@ -535,6 +570,7 @@ void CPU::step_single_cycle() {
 
         state_.gpr[0] = 0;
 
+        trace_note_timer_snapshot(mem_.timer_snapshot());
         trace_step_jsonl(pc_before, raw, inst, before, state_);
 
         // Keep pipeline stage registers advancing without changing the stable execution path yet.
@@ -555,7 +591,6 @@ void CPU::step_pipeline_mode() {
     uint32_t trap_pc = fetch_pc_before;
     uint32_t trap_raw = 0;
     DecodedInst trap_inst = make_invalid_decoded_inst();
-    trace_begin_step();
 
     try {
         if (state_.pc % 4 != 0) {
@@ -592,6 +627,7 @@ void CPU::step_pipeline_mode() {
         bool branch_resolved = false;
         bool branch_taken = false;
         bool halt_requested = false;
+        std::vector<TracePipelineForwarding> forwarding_events;
 
         if (pipeline_.id_ex.valid) {
             trap_pc = pipeline_.id_ex.pc;
@@ -607,6 +643,7 @@ void CPU::step_pipeline_mode() {
                 state_
             );
             next.ex_mem.alu_result = ex_result.alu_result;
+            forwarding_events = ex_result.forwarding;
             branch_resolved = pipeline_is_control_flow(pipeline_.id_ex.inst);
             branch_taken = ex_result.branch_taken;
             halt_requested = ex_result.halt_requested;
@@ -696,7 +733,7 @@ void CPU::step_pipeline_mode() {
             trap_pc = fetched_pc;
             trap_raw = 0;
             trap_inst = make_invalid_decoded_inst();
-            fetched_raw = mem_.read32(fetched_pc);
+            fetched_raw = mem_.fetch32(fetched_pc);
             fetched_instruction = true;
             next.if_id.valid = true;
             next.if_id.pc = fetched_pc;
@@ -708,6 +745,7 @@ void CPU::step_pipeline_mode() {
         TracePipelineInfo pipeline_trace{};
         pipeline_trace.enabled = true;
         pipeline_trace.cycle = pipeline_.cycle;
+        pipeline_trace.forwarding = forwarding_events;
 
         if (fetched_instruction) {
             pipeline_trace.if_stage = make_trace_stage_from_raw(fetched_pc, fetched_raw, "fetch");
@@ -766,6 +804,7 @@ void CPU::step_pipeline_mode() {
             pipeline_trace.stall = true;
             pipeline_trace.stall_reason = "raw_hazard";
             pipeline_trace.bubble_stages.push_back("EX");
+            pipeline_trace.load_use = true;
         }
 
         if (flush_for_control_hazard) {
@@ -793,6 +832,7 @@ void CPU::step_pipeline_mode() {
             trace_inst
         );
         trace_note_pipeline(pipeline_trace);
+        trace_note_timer_snapshot(mem_.timer_snapshot());
         trace_step_jsonl(trace_pc, trace_raw, trace_inst, before, state_);
     }
     catch (const TrapException& ex) {

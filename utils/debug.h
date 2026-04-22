@@ -5,11 +5,41 @@
 #include <string>
 #include <vector>
 
+#include "device/timer.h"
 #include "cpu/isa.h"
 
 void dump_regs(const CPUState& cpu);
 void dump_inst(uint32_t pc, uint32_t raw, const DecodedInst& inst);
 const char* opcode_to_string(Opcode op);
+
+struct TracePipelineForwarding {
+    std::string from_stage;
+    std::string to_stage;
+    std::string operand;
+    uint32_t reg = 0;
+    uint32_t value = 0;
+};
+
+struct TraceMemoryAccess {
+    std::string kind;
+    uint32_t addr = 0;
+    uint32_t value = 0;
+    uint32_t width = 0;
+    std::string target;
+    bool via_bus = false;
+};
+
+struct TraceDeviceEvent {
+    std::string device;
+    std::string kind;
+    bool has_addr = false;
+    uint32_t addr = 0;
+    bool has_value = false;
+    uint32_t value = 0;
+    uint32_t width = 0;
+    std::string text;
+    std::string cause;
+};
 
 struct TracePipelineStage {
     std::string state = "empty";
@@ -34,6 +64,8 @@ struct TracePipelineInfo {
     std::vector<std::string> flush_stages;
     bool has_redirect = false;
     uint32_t redirect_pc = 0;
+    bool load_use = false;
+    std::vector<TracePipelineForwarding> forwarding;
 };
 
 // ---------- trace pipeline ----------
@@ -44,8 +76,17 @@ bool trace_enabled();
 void trace_begin_step();
 void trace_note_branch(bool taken);
 void trace_note_mem_write(uint32_t addr, uint32_t value);
+void trace_note_mem_access(
+    const char* kind,
+    uint32_t addr,
+    uint32_t value,
+    uint32_t width,
+    const char* target,
+    bool via_bus);
 void trace_note_uart_char(uint8_t ch);
+void trace_note_device_interrupt(const char* device, const char* cause);
 void trace_note_trap(bool interrupt, TrapCause cause, uint32_t epc, uint32_t vector, uint32_t badv);
+void trace_note_timer_snapshot(const TimerSnapshot& snapshot);
 void trace_note_pipeline(const TracePipelineInfo& info);
 
 void trace_meta_jsonl(
@@ -62,7 +103,7 @@ void trace_step_jsonl(
     const CPUState& before,
     const CPUState& after);
 
-void trace_summary_jsonl(const CPUState& cpu);
+void trace_summary_jsonl(const CPUState& cpu, const char* error_message = nullptr);
 
 #ifdef DEBUG_TRACE
 #define MYCPU_TRACE(stmt) do { stmt; } while (0)

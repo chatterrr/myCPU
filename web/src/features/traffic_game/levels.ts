@@ -123,7 +123,7 @@ export const dispatchBlueprints: DispatchBlueprint[] = [
   {
     id: "loaduse-brake",
     kind: "load-use",
-    title: "装载急停",
+    title: "Load-use 急停",
     shortLabel: "ST",
     cue: "停拍",
     description: "插入气泡",
@@ -163,8 +163,8 @@ export const dispatchBlueprints: DispatchBlueprint[] = [
       { stage: "id", label: "清空", tone: "rose" }
     ],
     flowHints: [
-      { fromStage: "ex", toStage: "id", label: "flush", tone: "rose", lane: 0 },
-      { fromStage: "ex", toStage: "if", label: "flush", tone: "rose", lane: 1 }
+      { fromStage: "ex", toStage: "id", label: "冲刷", tone: "rose", lane: 0 },
+      { fromStage: "ex", toStage: "if", label: "冲刷", tone: "rose", lane: 1 }
     ]
   }
 ];
@@ -180,15 +180,13 @@ export function resolveDispatchBlueprints(
     const trace = traceMap[blueprint.traceSampleId];
 
     if (!trace) {
-      throw new Error(`缺少示例 trace: ${blueprint.traceSampleId}`);
+      throw new Error(`缺少样例 trace: ${blueprint.traceSampleId}`);
     }
 
     const anchorStep = trace.steps[blueprint.anchorStepIndex];
 
     if (!anchorStep) {
-      throw new Error(
-        `trace ${blueprint.traceSampleId} 缺少步号 ${blueprint.anchorStepIndex}`
-      );
+      throw new Error(`trace ${blueprint.traceSampleId} 缺少步号 ${blueprint.anchorStepIndex}`);
     }
 
     return {
@@ -247,7 +245,7 @@ export function describeDispatchHazard(
   }
 
   if (step.pipeline?.stall) {
-    return "前段停住，执行段插入气泡。";
+    return "前端停住，执行段插入气泡。";
   }
 
   if (blueprint.kind === "forward") {

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type {
   HazardFlowHint,
   HazardHintTone,
@@ -7,11 +7,9 @@ import type {
 import { pipelineStageOrder } from "@/features/pipeline/palette";
 import {
   describePipelinePulse,
-  findTokenOriginStage,
   getPipelineTokens,
   getRegisterActivities,
   getStageChineseLabel,
-  getStageIndex,
   getStageStateLabel,
   type PipelineTone
 } from "@/features/pipeline/visuals";
@@ -21,117 +19,42 @@ import type {
   TraceStepRecord
 } from "@/features/trace/types";
 
-const boardMetrics = {
-  width: 1220,
-  height: 470,
-  stageWidth: 212,
-  stageHeight: 210,
-  stageGap: 16,
-  stageStartX: 42,
-  stageY: 118,
-  tokenInsetX: 18,
-  tokenY: 54
-} as const;
-
-const emptyStage: TracePipelineStage = { state: "empty" };
-
 const toneClasses: Record<PipelineTone, string> = {
-  neutral: "border-white/20 bg-white/10 text-slate-50 shadow-[0_0_26px_rgba(255,255,255,0.08)]",
-  cyan: "border-cyan-300/55 bg-cyan-300/18 text-cyan-50 shadow-[0_0_30px_rgba(34,211,238,0.24)]",
-  amber: "border-amber-300/55 bg-amber-300/18 text-amber-50 shadow-[0_0_30px_rgba(251,191,36,0.24)]",
-  emerald: "border-emerald-300/55 bg-emerald-300/18 text-emerald-50 shadow-[0_0_30px_rgba(16,185,129,0.24)]",
-  rose: "border-rose-300/55 bg-rose-300/18 text-rose-50 shadow-[0_0_30px_rgba(251,113,133,0.24)]"
+  neutral: "border-white/20 bg-white/10 text-slate-50",
+  cyan: "border-cyan-300/55 bg-cyan-300/18 text-cyan-50",
+  amber: "border-amber-300/55 bg-amber-300/18 text-amber-50",
+  emerald: "border-emerald-300/55 bg-emerald-300/18 text-emerald-50",
+  rose: "border-rose-300/55 bg-rose-300/18 text-rose-50"
 };
 
 const stageShellClasses: Record<string, string> = {
   empty: "border-slate-700/90 bg-[linear-gradient(180deg,rgba(2,6,23,0.98),rgba(15,23,42,0.92))] text-slate-300",
-  fetch: "border-cyan-300/55 bg-[linear-gradient(180deg,rgba(6,182,212,0.22),rgba(8,47,73,0.72))] text-cyan-50 shadow-[0_0_32px_rgba(34,211,238,0.16)]",
-  occupied: "border-emerald-300/50 bg-[linear-gradient(180deg,rgba(16,185,129,0.2),rgba(5,46,22,0.74))] text-emerald-50 shadow-[0_0_32px_rgba(16,185,129,0.14)]",
-  stalled: "border-amber-300/55 bg-[linear-gradient(180deg,rgba(251,191,36,0.22),rgba(120,53,15,0.78))] text-amber-50 shadow-[0_0_36px_rgba(251,191,36,0.16)]",
-  flushed: "border-rose-300/55 bg-[linear-gradient(180deg,rgba(251,113,133,0.22),rgba(127,29,29,0.8))] text-rose-50 shadow-[0_0_36px_rgba(251,113,133,0.18)]"
+  fetch: "border-cyan-300/55 bg-[linear-gradient(180deg,rgba(6,182,212,0.22),rgba(8,47,73,0.72))] text-cyan-50",
+  occupied: "border-emerald-300/50 bg-[linear-gradient(180deg,rgba(16,185,129,0.2),rgba(5,46,22,0.74))] text-emerald-50",
+  stalled: "border-amber-300/55 bg-[linear-gradient(180deg,rgba(251,191,36,0.22),rgba(120,53,15,0.78))] text-amber-50",
+  flushed: "border-rose-300/55 bg-[linear-gradient(180deg,rgba(251,113,133,0.22),rgba(127,29,29,0.8))] text-rose-50",
+  bubble: "border-yellow-200/75 bg-[linear-gradient(180deg,rgba(254,240,138,0.42),rgba(120,53,15,0.16))] text-amber-50"
 };
 
-const tokenClasses: Record<string, string> = {
-  fetch:
-    "border-cyan-200/75 bg-[linear-gradient(180deg,rgba(103,232,249,0.46),rgba(8,145,178,0.16))] text-cyan-50 shadow-[0_0_46px_rgba(34,211,238,0.34)]",
-  occupied:
-    "border-emerald-200/70 bg-[linear-gradient(180deg,rgba(110,231,183,0.42),rgba(6,78,59,0.16))] text-emerald-50 shadow-[0_0_46px_rgba(16,185,129,0.32)]",
-  stalled:
-    "border-amber-200/75 bg-[linear-gradient(180deg,rgba(253,224,71,0.46),rgba(146,64,14,0.18))] text-amber-50 shadow-[0_0_50px_rgba(251,191,36,0.34)]",
-  flushed:
-    "border-rose-200/75 bg-[linear-gradient(180deg,rgba(253,164,175,0.46),rgba(159,18,57,0.2))] text-rose-50 shadow-[0_0_50px_rgba(251,113,133,0.34)]",
-  bubble:
-    "border-yellow-200/75 bg-[linear-gradient(180deg,rgba(254,240,138,0.42),rgba(120,53,15,0.16))] text-amber-50 shadow-[0_0_44px_rgba(250,204,21,0.3)]"
+const hintClasses: Record<HazardHintTone, string> = {
+  cyan: "border-cyan-300/50 bg-cyan-300/18 text-cyan-50",
+  amber: "border-amber-300/50 bg-amber-300/18 text-amber-50",
+  emerald: "border-emerald-300/50 bg-emerald-300/18 text-emerald-50",
+  rose: "border-rose-300/50 bg-rose-300/18 text-rose-50"
 };
 
-const highlightRingClasses: Record<HazardHintTone, string> = {
-  cyan: "ring-2 ring-cyan-300/45 shadow-[0_0_40px_rgba(34,211,238,0.18)]",
-  amber: "ring-2 ring-amber-300/45 shadow-[0_0_40px_rgba(251,191,36,0.18)]",
-  emerald: "ring-2 ring-emerald-300/45 shadow-[0_0_40px_rgba(16,185,129,0.2)]",
-  rose: "ring-2 ring-rose-300/45 shadow-[0_0_40px_rgba(251,113,133,0.18)]"
-};
+const emptyStage: TracePipelineStage = { state: "empty" };
 
-const markClasses: Record<HazardHintTone, string> = {
-  cyan: "border-cyan-300/50 bg-cyan-300/22 text-cyan-50",
-  amber: "border-amber-300/50 bg-amber-300/22 text-amber-50",
-  emerald: "border-emerald-300/50 bg-emerald-300/22 text-emerald-50",
-  rose: "border-rose-300/50 bg-rose-300/22 text-rose-50"
-};
-
-const registerClasses = {
-  read: "border-cyan-300/50 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(34,211,238,0.16)]",
-  target: "border-emerald-300/50 bg-emerald-300/18 text-emerald-50 shadow-[0_0_22px_rgba(16,185,129,0.16)]",
-  write: "border-lime-300/55 bg-lime-300/18 text-lime-50 shadow-[0_0_22px_rgba(132,204,22,0.18)]"
-} as const;
-
-const flowColors: Record<HazardHintTone, { stroke: string; glow: string; fill: string }> = {
-  cyan: {
-    stroke: "#67e8f9",
-    glow: "rgba(34,211,238,0.52)",
-    fill: "rgba(34,211,238,0.22)"
-  },
-  amber: {
-    stroke: "#fbbf24",
-    glow: "rgba(251,191,36,0.52)",
-    fill: "rgba(251,191,36,0.22)"
-  },
-  emerald: {
-    stroke: "#6ee7b7",
-    glow: "rgba(16,185,129,0.48)",
-    fill: "rgba(16,185,129,0.22)"
-  },
-  rose: {
-    stroke: "#fb7185",
-    glow: "rgba(251,113,133,0.52)",
-    fill: "rgba(251,113,133,0.22)"
-  }
-};
-
-function getStageBoxX(stage: PipelineStageKey): number {
-  return (
-    boardMetrics.stageStartX
-    + getStageIndex(stage) * (boardMetrics.stageWidth + boardMetrics.stageGap)
+function groupHighlights(
+  stageHighlights: HazardStageHighlight[]
+): Partial<Record<PipelineStageKey, HazardStageHighlight[]>> {
+  return stageHighlights.reduce<Partial<Record<PipelineStageKey, HazardStageHighlight[]>>>(
+    (accumulator, item) => ({
+      ...accumulator,
+      [item.stage]: [...(accumulator[item.stage] ?? []), item]
+    }),
+    {}
   );
-}
-
-function getTokenX(stage: PipelineStageKey): number {
-  return getStageBoxX(stage) + boardMetrics.tokenInsetX;
-}
-
-function buildFlowPath(hint: HazardFlowHint) {
-  const fromX = getStageBoxX(hint.fromStage) + boardMetrics.stageWidth / 2;
-  const toX = getStageBoxX(hint.toStage) + boardMetrics.stageWidth / 2;
-  const fromY = boardMetrics.stageY - 14;
-  const toY = boardMetrics.stageY - 14;
-  const lane = hint.lane ?? 0;
-  const controlY = 30 + lane * 30 + Math.abs(fromX - toX) * 0.05;
-  const labelY = controlY - 16;
-
-  return {
-    path: `M ${fromX} ${fromY} C ${fromX} ${controlY}, ${toX} ${controlY}, ${toX} ${toY}`,
-    labelX: (fromX + toX) / 2,
-    labelY
-  };
 }
 
 function getEventLabel(step: TraceStepRecord) {
@@ -152,10 +75,9 @@ function getEventLabel(step: TraceStepRecord) {
 
 export function PipelineStageCanvas({
   step,
-  previousStep = null,
   stageHighlights = [],
   flowHints = [],
-  snapshotLabel = "主画面",
+  snapshotLabel = "流水线画面",
   badgeLabel = "逐拍推进",
   pulseTone = "neutral",
   hazardLabel,
@@ -180,340 +102,171 @@ export function PipelineStageCanvas({
   }
 
   const pulse = describePipelinePulse(step, pulseTone);
-  const tokens = getPipelineTokens(step);
   const registerActivities = getRegisterActivities(step);
-  const marksByStage = stageHighlights.reduce<
-    Partial<Record<PipelineStageKey, HazardStageHighlight[]>>
-  >((accumulator, item) => {
-    const currentMarks = accumulator[item.stage] ?? [];
-
-    return {
-      ...accumulator,
-      [item.stage]: [...currentMarks, item]
-    };
-  }, {});
+  const highlightsByStage = groupHighlights(stageHighlights);
+  const tokens = getPipelineTokens(step);
 
   return (
-    <div className="overflow-x-auto">
-      <div
-        className="relative overflow-hidden rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(251,113,133,0.12),transparent_26%),linear-gradient(180deg,rgba(1,4,12,0.98),rgba(2,6,23,0.92))] p-6 shadow-[0_36px_110px_rgba(2,6,23,0.52)]"
-        style={{ minWidth: `${boardMetrics.width}px` }}
-      >
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),transparent_28%,transparent_72%,rgba(34,211,238,0.05))]" />
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div className="space-y-2">
-            {snapshotLabel ? (
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                {snapshotLabel}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-2xl font-semibold text-slate-50">
-                第 {step.pipeline.cycle} 拍
-              </p>
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] ${toneClasses[pulse.tone]}`}
-              >
-                {getEventLabel(step)}
-              </span>
-              {hazardLabel ? (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200">
-                  {hazardLabel}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
+    <div className="rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(251,113,133,0.12),transparent_26%),linear-gradient(180deg,rgba(1,4,12,0.98),rgba(2,6,23,0.92))] p-6 shadow-[0_36px_110px_rgba(2,6,23,0.52)]">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          {snapshotLabel ? (
+            <p className="text-xs tracking-[0.24em] text-slate-400">{snapshotLabel}</p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.26em] text-slate-300">
-              {badgeLabel}
-            </div>
-            <div
-              className={`rounded-full border px-4 py-2 text-sm font-medium ${toneClasses[pulse.tone]}`}
+            <p className="text-2xl font-semibold text-slate-50">
+              第 {step.pipeline.cycle} 拍
+            </p>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClasses[pulse.tone]}`}
             >
-              {pulse.label}
-            </div>
-          </div>
-        </div>
-
-        <div className="relative" style={{ height: `${boardMetrics.height}px` }}>
-          <div
-            className="relative mx-auto"
-            style={{ width: `${boardMetrics.width}px`, height: `${boardMetrics.height}px` }}
-          >
-            <svg
-              className="pointer-events-none absolute left-0 top-0"
-              width={boardMetrics.width}
-              height={boardMetrics.height}
-              viewBox={`0 0 ${boardMetrics.width} ${boardMetrics.height}`}
-              fill="none"
-              aria-hidden="true"
-            >
-            <defs>
-              {Object.entries(flowColors).map(([tone, palette]) => (
-                <marker
-                  key={tone}
-                  id={`pipeline-arrow-${tone}`}
-                  viewBox="0 0 10 10"
-                  refX="8"
-                  refY="5"
-                  markerWidth="7"
-                  markerHeight="7"
-                  orient="auto-start-reverse"
-                >
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill={palette.stroke} />
-                </marker>
-              ))}
-            </defs>
-
-            {pipelineStageOrder.slice(0, -1).map((stageRef, index) => {
-              const startX = getStageBoxX(stageRef.key) + boardMetrics.stageWidth;
-              const endX = getStageBoxX(pipelineStageOrder[index + 1]?.key ?? stageRef.key);
-              const midY = boardMetrics.stageY + boardMetrics.stageHeight / 2;
-
-              return (
-                <g key={`${stageRef.key}-link`}>
-                  <path
-                    d={`M ${startX} ${midY} L ${endX - 18} ${midY}`}
-                    stroke="rgba(148, 163, 184, 0.28)"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d={`M ${endX - 30} ${midY - 12} L ${endX - 18} ${midY} L ${endX - 30} ${midY + 12}`}
-                    stroke="rgba(148, 163, 184, 0.28)"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              );
-            })}
-
-            {flowHints.map((hint) => {
-              const geometry = buildFlowPath(hint);
-              const palette = flowColors[hint.tone];
-              const labelWidth = Math.max(60, hint.label.length * 10 + 18);
-
-              return (
-                <g key={`${hint.fromStage}-${hint.toStage}-${hint.label}`}>
-                  <path
-                    d={geometry.path}
-                    stroke={palette.glow}
-                    strokeWidth="12"
-                    strokeLinecap="round"
-                    opacity="0.22"
-                  />
-                  <path
-                    d={geometry.path}
-                    stroke={palette.stroke}
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                    strokeDasharray={hint.tone === "amber" ? "8 8" : "12 8"}
-                    markerEnd={`url(#pipeline-arrow-${hint.tone})`}
-                  />
-                  <rect
-                    x={geometry.labelX - labelWidth / 2}
-                    y={geometry.labelY - 12}
-                    width={labelWidth}
-                    height="24"
-                    rx="12"
-                    fill={palette.fill}
-                    stroke={palette.stroke}
-                  />
-                  <text
-                    x={geometry.labelX}
-                    y={geometry.labelY + 4}
-                    fill={palette.stroke}
-                    fontFamily="Space Grotesk, Segoe UI, sans-serif"
-                    fontSize="12"
-                    fontWeight="700"
-                    textAnchor="middle"
-                  >
-                    {hint.label}
-                  </text>
-                </g>
-              );
-            })}
-            </svg>
-
-            {step.pipeline.flush.length ? (
-              <motion.div
-                key={`flush-wave-${step.pipeline.cycle}`}
-                initial={{ opacity: 0, x: -36 }}
-                animate={{ opacity: [0, 0.9, 0], x: [0, 118, 196] }}
-                transition={{ duration: 0.9, ease: "easeOut" }}
-                className="pointer-events-none absolute left-[42px] top-[118px] h-[210px] w-[440px] rounded-[30px] bg-[linear-gradient(90deg,rgba(244,63,94,0),rgba(244,63,94,0.26),rgba(244,63,94,0.72),rgba(244,63,94,0))] blur-sm"
-              />
+              {getEventLabel(step)}
+            </span>
+            {hazardLabel ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                {hazardLabel}
+              </span>
             ) : null}
-
-            <div
-              className="absolute left-0 top-0 flex gap-4"
-              style={{
-                left: `${boardMetrics.stageStartX}px`,
-                top: `${boardMetrics.stageY}px`
-              }}
-            >
-              {pipelineStageOrder.map((stageRef) => {
-                const stage = step.pipeline?.[stageRef.key] ?? emptyStage;
-                const marks = marksByStage[stageRef.key] ?? [];
-                const dominantMark = marks[marks.length - 1];
-
-                return (
-                  <div
-                    key={stageRef.key}
-                    className={`relative h-[210px] w-[212px] rounded-[30px] border p-4 backdrop-blur-sm ${stageShellClasses[stage.state] ?? stageShellClasses.empty} ${dominantMark ? highlightRingClasses[dominantMark.tone] : ""}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.28em] text-slate-400/85">
-                          {stageRef.label}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-50">
-                          {getStageChineseLabel(stageRef.key)}
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.24em] text-slate-300/75">
-                          {getStageStateLabel(stage.state)}
-                        </p>
-                      </div>
-
-                      <div className="flex max-w-[92px] flex-col items-end gap-2">
-                        {marks.map((mark) => (
-                          <span
-                            key={`${stageRef.key}-${mark.label}`}
-                            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-[0.2em] ${markClasses[mark.tone]}`}
-                          >
-                            {mark.label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="absolute bottom-4 left-4 right-4 rounded-[22px] border border-white/12 bg-black/28 px-4 py-3 text-xs uppercase tracking-[0.22em] text-slate-200/90">
-                      {stage.raw ?? stage.pc ?? "等待指令"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <AnimatePresence mode="popLayout">
-              {tokens.map((token) => {
-                const originStage = findTokenOriginStage(token, previousStep);
-                const currentX = getTokenX(token.stage);
-                const originX = getTokenX(originStage);
-                const isStalled = token.state === "stalled";
-                const isBubble = token.kind === "bubble";
-
-                return (
-                  <motion.div
-                    key={`${token.instructionKey}-${token.stage}`}
-                    initial={{
-                      x: originX,
-                      y: boardMetrics.stageY + boardMetrics.tokenY,
-                      opacity: isBubble ? 0 : 0.25,
-                      scale: isBubble ? 0.6 : 0.96
-                    }}
-                    animate={{
-                      x: currentX,
-                      y: boardMetrics.stageY + boardMetrics.tokenY,
-                      opacity: 1,
-                      scale: isStalled ? [1, 1.03, 1] : 1
-                    }}
-                    exit={{ opacity: 0, scale: 0.82 }}
-                    transition={{
-                      duration: isBubble ? 0.42 : 0.68,
-                      ease: "easeInOut"
-                    }}
-                    className={`absolute left-0 top-0 h-[120px] w-[176px] rounded-[24px] border px-4 py-4 backdrop-blur ${tokenClasses[token.state] ?? tokenClasses.occupied}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.26em] opacity-75">
-                          {token.kind === "bubble" ? "插入" : token.stage.toUpperCase()}
-                        </p>
-                        <p className="mt-2 text-xl font-semibold leading-6">
-                          {token.title}
-                        </p>
-                      </div>
-
-                      <span className="rounded-full border border-white/10 bg-black/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.22em] opacity-80">
-                        {getStageStateLabel(token.state)}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-1 text-sm opacity-90">
-                      <p>{token.subtitle}</p>
-                      <p className="text-xs uppercase tracking-[0.2em] opacity-70">
-                        {token.raw ?? (token.kind === "bubble" ? "stall gap" : "flow slot")}
-                      </p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
           </div>
         </div>
 
-        {showRegisters ? (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr,0.85fr]">
-            <div className="rounded-[26px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(8,47,73,0.34),rgba(2,6,23,0.92))] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-100">寄存器活动</p>
-                <span className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  读 / 目标 / 写回
-                </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300">
+            {badgeLabel}
+          </div>
+          <div
+            className={`rounded-full border px-4 py-2 text-sm font-medium ${toneClasses[pulse.tone]}`}
+          >
+            {pulse.label}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-5">
+        {pipelineStageOrder.map((stageRef) => {
+          const stage = step.pipeline?.[stageRef.key] ?? emptyStage;
+          const marks = highlightsByStage[stageRef.key] ?? [];
+          const stageTokens = tokens.filter((token) => token.stage === stageRef.key);
+
+          return (
+            <div
+              key={stageRef.key}
+              className={`rounded-[28px] border p-4 ${stageShellClasses[stage.state] ?? stageShellClasses.empty}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs tracking-[0.22em] text-slate-300/85">
+                    {stageRef.label}
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-slate-50">
+                    {getStageChineseLabel(stageRef.key)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-300/80">
+                    {getStageStateLabel(stage.state)}
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-end gap-2">
+                  {marks.map((mark) => (
+                    <span
+                      key={`${stageRef.key}-${mark.label}`}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${hintClasses[mark.tone]}`}
+                    >
+                      {mark.label}
+                    </span>
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {registerActivities.length ? (
-                  registerActivities.map((activity, index) => (
-                    <motion.span
-                      key={`${activity.kind}-${activity.reg}-${activity.value ?? index}`}
-                      initial={{ opacity: 0.35, scale: 0.92 }}
-                      animate={{ opacity: [0.45, 1, 0.88], scale: [0.95, 1.04, 1] }}
-                      transition={{ duration: 0.58, delay: index * 0.04 }}
-                      className={`rounded-full border px-3 py-2 text-sm font-medium ${registerClasses[activity.kind]}`}
+              <div className="mt-4 space-y-2">
+                {stageTokens.length ? (
+                  stageTokens.map((token) => (
+                    <motion.div
+                      key={`${token.instructionKey}-${token.stage}`}
+                      initial={{ opacity: 0.8, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22 }}
+                      className={`rounded-[20px] border px-4 py-3 ${stageShellClasses[token.state] ?? stageShellClasses.occupied}`}
                     >
-                      r{activity.reg} {activity.label}
-                      {activity.value ? ` ${activity.value}` : ""}
-                    </motion.span>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold">
+                          {token.kind === "bubble" ? "气泡" : token.title}
+                        </p>
+                        <span className="text-[10px] text-slate-200/80">
+                          {token.kind === "bubble" ? "插入" : token.stage.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-100">{token.subtitle}</p>
+                      <p className="mt-1 text-xs text-slate-300/80">
+                        {token.raw ?? (token.kind === "bubble" ? "停顿空拍" : "流水线槽位")}
+                      </p>
+                    </motion.div>
                   ))
                 ) : (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">
-                    本拍无寄存器变化
-                  </span>
+                  <div className="rounded-[20px] border border-white/12 bg-black/24 px-4 py-3 text-sm text-slate-300">
+                    {stage.raw ?? stage.pc ?? "等待指令"}
+                  </div>
                 )}
               </div>
             </div>
+          );
+        })}
+      </div>
 
-            <div className="rounded-[26px] border border-emerald-300/18 bg-[linear-gradient(180deg,rgba(6,78,59,0.34),rgba(2,6,23,0.92))] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-100">路径提示</p>
-                <span className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                  来源 / 使用
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr,0.85fr]">
+        {showRegisters ? (
+          <div className="rounded-[26px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(8,47,73,0.34),rgba(2,6,23,0.92))] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-100">寄存器活动</p>
+              <span className="text-xs text-slate-400">读取 / 目标 / 写回</span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {registerActivities.length ? (
+                registerActivities.map((activity, index) => (
+                  <motion.span
+                    key={`${activity.kind}-${activity.reg}-${activity.value ?? index}`}
+                    initial={{ opacity: 0.4, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.22 }}
+                    className="rounded-full border border-white/10 bg-white/8 px-3 py-2 text-sm text-slate-100"
+                  >
+                    r{activity.reg} {activity.label}
+                    {activity.value ? ` ${activity.value}` : ""}
+                  </motion.span>
+                ))
+              ) : (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">
+                  本拍没有寄存器变化
                 </span>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {flowHints.length ? (
-                  flowHints.map((hint) => (
-                    <span
-                      key={`${hint.fromStage}-${hint.toStage}-${hint.label}-rail`}
-                      className={`rounded-full border px-3 py-2 text-sm ${markClasses[hint.tone]}`}
-                    >
-                      {hint.fromStage.toUpperCase()} → {hint.toStage.toUpperCase()} {hint.label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">
-                    本拍按顺序推进
-                  </span>
-                )}
-              </div>
+              )}
             </div>
           </div>
         ) : null}
+
+        <div className="rounded-[26px] border border-emerald-300/18 bg-[linear-gradient(180deg,rgba(6,78,59,0.34),rgba(2,6,23,0.92))] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-100">路径提示</p>
+            <span className="text-xs text-slate-400">来源 / 去向</span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {flowHints.length ? (
+              flowHints.map((hint) => (
+                <span
+                  key={`${hint.fromStage}-${hint.toStage}-${hint.label}`}
+                  className={`rounded-full border px-3 py-2 text-sm ${hintClasses[hint.tone]}`}
+                >
+                  {hint.fromStage.toUpperCase()} -&gt; {hint.toStage.toUpperCase()} {hint.label}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">
+                本拍按顺序推进
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "device/Device.h"
+#include "utils/debug.h"
 
 namespace {
 
@@ -44,6 +45,7 @@ bool Bus::try_read8(uint32_t addr, uint8_t& value) const {
     }
 
     value = mapping->device->read8(addr - mapping->base);
+    trace_note_mem_access("read", addr, value, 1u, mapping->device->trace_name(), true);
     return true;
 }
 
@@ -54,6 +56,7 @@ bool Bus::try_read16(uint32_t addr, uint16_t& value) const {
     }
 
     value = mapping->device->read16(addr - mapping->base);
+    trace_note_mem_access("read", addr, value, 2u, mapping->device->trace_name(), true);
     return true;
 }
 
@@ -64,6 +67,7 @@ bool Bus::try_read32(uint32_t addr, uint32_t& value) const {
     }
 
     value = mapping->device->read32(addr - mapping->base);
+    trace_note_mem_access("read", addr, value, 4u, mapping->device->trace_name(), true);
     return true;
 }
 
@@ -74,6 +78,7 @@ bool Bus::try_write8(uint32_t addr, uint8_t value) {
     }
 
     mapping->device->write8(addr - mapping->base, value);
+    trace_note_mem_access("write", addr, value, 1u, mapping->device->trace_name(), true);
     return true;
 }
 
@@ -84,6 +89,7 @@ bool Bus::try_write16(uint32_t addr, uint16_t value) {
     }
 
     mapping->device->write16(addr - mapping->base, value);
+    trace_note_mem_access("write", addr, value, 2u, mapping->device->trace_name(), true);
     return true;
 }
 
@@ -94,6 +100,7 @@ bool Bus::try_write32(uint32_t addr, uint32_t value) {
     }
 
     mapping->device->write32(addr - mapping->base, value);
+    trace_note_mem_access("write", addr, value, 4u, mapping->device->trace_name(), true);
     return true;
 }
 

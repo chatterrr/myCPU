@@ -5,6 +5,7 @@
 
 #include "config/constants.h"
 #include "device/bus.h"
+#include "utils/debug.h"
 
 namespace {
 
@@ -67,6 +68,7 @@ void TimerDevice::tick() {
 
     if ((control_ & config::TIMER_CTRL_INTERRUPT_ENABLE_BIT) != 0u && bus() != nullptr) {
         bus()->raise_interrupt(TrapCause::TimerInterrupt);
+        trace_note_device_interrupt("timer", trap_cause_to_string(TrapCause::TimerInterrupt));
     }
 
     if ((control_ & config::TIMER_CTRL_PERIODIC_BIT) != 0u) {
@@ -75,6 +77,18 @@ void TimerDevice::tick() {
     else {
         control_ &= ~config::TIMER_CTRL_ENABLE_BIT;
     }
+}
+
+TimerSnapshot TimerDevice::snapshot() const noexcept {
+    TimerSnapshot snapshot{};
+    snapshot.control = control_;
+    snapshot.interval = interval_;
+    snapshot.remaining = remaining_;
+    snapshot.enabled = (control_ & config::TIMER_CTRL_ENABLE_BIT) != 0u;
+    snapshot.periodic = (control_ & config::TIMER_CTRL_PERIODIC_BIT) != 0u;
+    snapshot.interrupt_enabled =
+        (control_ & config::TIMER_CTRL_INTERRUPT_ENABLE_BIT) != 0u;
+    return snapshot;
 }
 
 uint32_t TimerDevice::read_register(uint32_t aligned_offset) const {

@@ -8,6 +8,10 @@ class Device {
 public:
     virtual ~Device() = default;
 
+    virtual const char* trace_name() const noexcept {
+        return "device";
+    }
+
     virtual uint8_t read8(uint32_t offset) const = 0;
     virtual uint16_t read16(uint32_t offset) const = 0;
     virtual uint32_t read32(uint32_t offset) const = 0;

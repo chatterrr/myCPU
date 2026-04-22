@@ -97,6 +97,13 @@ namespace {
         uint32_t base = config::PROGRAM_BASE,
         const std::vector<uint32_t>& handler_words = {});
 
+    std::string capture_trace_allow_failure_for_program(
+        const std::vector<uint32_t>& words,
+        uint64_t max_steps,
+        bool pipeline_mode,
+        uint32_t base = config::PROGRAM_BASE,
+        const std::vector<uint32_t>& handler_words = {});
+
     void run_program_to_halt(
         ProgramContext& ctx,
         const std::vector<uint32_t>& words,
@@ -190,6 +197,35 @@ namespace {
         trace_meta_jsonl("test-program", base, base, max_steps, pipeline_mode);
         ctx.cpu.run(max_steps);
         trace_summary_jsonl(ctx.cpu.state());
+        clear_trace_stream();
+        return trace.str();
+    }
+
+    std::string capture_trace_allow_failure_for_program(
+        const std::vector<uint32_t>& words,
+        uint64_t max_steps,
+        bool pipeline_mode,
+        uint32_t base,
+        const std::vector<uint32_t>& handler_words
+    ) {
+        ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(pipeline_mode);
+        Loader::load_program_words(ctx.mem, base, words);
+        if (!handler_words.empty()) {
+            load_exception_handler(ctx, handler_words);
+        }
+        ctx.cpu.reset(base);
+
+        std::ostringstream trace;
+        set_trace_stream(&trace);
+        trace_meta_jsonl("test-program", base, base, max_steps, pipeline_mode);
+        try {
+            ctx.cpu.run(max_steps);
+            trace_summary_jsonl(ctx.cpu.state());
+        }
+        catch (const std::exception& ex) {
+            trace_summary_jsonl(ctx.cpu.state(), ex.what());
+        }
         clear_trace_stream();
         return trace.str();
     }
@@ -786,6 +822,17 @@ namespace {
         expect_contains(load_use_trace, "\"stall\":true", "load-use trace should record a stall");
         expect_contains(load_use_trace, "\"stall_reason\":\"raw_hazard\"", "load-use trace should explain the stall");
         expect_contains(load_use_trace, "\"bubble\":[\"EX\"]", "load-use trace should record the inserted EX bubble");
+        expect_contains(load_use_trace, "\"load_use\":true", "load-use trace should flag the load-use interlock");
+        expect_contains(load_use_trace, "\"memory_accesses\":[{\"kind\":\"read\"", "load-use trace should record the load memory access");
+
+        const std::string forwarding_trace = capture_trace_for_program(
+            tests::kPipelineForwardingProgramWords,
+            tests::kPipelineForwardingProgramSteps,
+            true
+        );
+        expect_contains(forwarding_trace, "\"forwarding\":[", "forwarding trace should include forwarding metadata");
+        expect_contains(forwarding_trace, "\"from_stage\":\"MEM\"", "forwarding trace should identify the producer stage");
+        expect_contains(forwarding_trace, "\"to_stage\":\"EX\"", "forwarding trace should identify the consumer stage");
 
         const std::string branch_trace = capture_trace_for_program(
             tests::kPipelineBranchProgramWords,
@@ -824,6 +871,8 @@ namespace {
         expect_contains(exception_trace, "\"cause\":\"invalid_instruction\"", "exception trace should record the invalid cause");
         expect_contains(exception_trace, "\"epc\":\"0x00001004\"", "exception trace should record epc");
         expect_contains(exception_trace, "\"vector\":\"0x00000080\"", "exception trace should record the vector");
+        expect_contains(exception_trace, "\"trap_state\":{\"cause\":\"invalid_instruction\"", "exception trace should record the latched trap state");
+        expect_contains(exception_trace, "\"schema_version\":\"workbench-v1\"", "exception trace should mark the schema version");
 
         const std::vector<uint32_t> timer_program_words = {
             tests::ENC_1RI20(tests::OP_LU12I_W, 10, 0x1FE00),
@@ -850,6 +899,9 @@ namespace {
         expect_contains(interrupt_trace, "\"interrupt\":true", "interrupt trace should mark interrupt steps");
         expect_contains(interrupt_trace, "\"cause\":\"timer_interrupt\"", "interrupt trace should record the timer cause");
         expect_contains(interrupt_trace, "\"vector\":\"0x00000080\"", "interrupt trace should record the vector");
+        expect_contains(interrupt_trace, "\"device_events\":[", "interrupt trace should carry device events");
+        expect_contains(interrupt_trace, "\"device\":\"timer\"", "interrupt trace should identify timer device activity");
+        expect_contains(interrupt_trace, "\"timer\":{\"control\":\"0x00000005\"", "interrupt trace should capture timer state snapshots");
 
         const std::string jirl_trace = capture_trace_for_program(
             tests::kJirlProgramWords,
@@ -860,6 +912,18 @@ namespace {
             jirl_trace,
             "\"op\":\"JIRL\",\"rd\":5,\"rj\":6,\"rk\":0",
             "JIRL trace should use rd for the link register");
+    }
+
+    void test_trace_summary_for_runtime_error() {
+        const std::string trace = capture_trace_allow_failure_for_program(
+            tests::kLogicProgramWords,
+            16,
+            true
+        );
+
+        expect_contains(trace, "\"mode\":\"pipeline\"", "runtime-error trace should preserve pipeline mode in the summary");
+        expect_contains(trace, "\"stop_reason\":\"runtime_error\"", "runtime-error trace should summarize the runtime stop reason");
+        expect_contains(trace, "\"error_message\":\"pipeline teaching mode currently supports", "runtime-error trace should preserve the fatal message");
     }
 
 }  // namespace
@@ -909,6 +973,7 @@ int main() {
         test_pipeline_rejects_interpreter_only_instruction();
         test_pipeline_trace_records();
         test_trap_trace_records();
+        test_trace_summary_for_runtime_error();
 
         std::cout << "[PASS] CPU integration tests all passed.\n";
         return 0;

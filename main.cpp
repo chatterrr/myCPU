@@ -16,6 +16,11 @@
 
 namespace {
 
+    struct BuiltinProgramSpec {
+        const std::vector<uint32_t>* words = nullptr;
+        const std::vector<uint32_t>* exception_handler_words = nullptr;
+    };
+
     uint32_t parse_u32_arg(const std::string& text, const char* name) {
         std::size_t pos = 0;
         unsigned long value = 0;
@@ -51,25 +56,38 @@ namespace {
         return static_cast<uint64_t>(value);
     }
 
-    const std::vector<uint32_t>& resolve_builtin_program(const std::string& name) {
-        if (name == "smoke") return tests::kSmokeProgramWords;
-        if (name == "arith") return tests::kArithProgramWords;
-        if (name == "logic") return tests::kLogicProgramWords;
-        if (name == "mem") return tests::kMemProgramWords;
-        if (name == "branch") return tests::kBranchProgramWords;
-        if (name == "r0") return tests::kR0WriteProtectProgramWords;
-        if (name == "slt") return tests::kSltProgramWords;
-        if (name == "lu12i") return tests::kLu12iProgramWords;
-        if (name == "uart") return tests::kUartProgramWords;
-        if (name == "pipeline-nohaz") return tests::kPipelineNoHazardProgramWords;
-        if (name == "pipeline-raw") return tests::kPipelineRawHazardProgramWords;
-        if (name == "pipeline-forward") return tests::kPipelineForwardingProgramWords;
-        if (name == "pipeline-loaduse") return tests::kPipelineLoadUseProgramWords;
-        if (name == "pipeline-branch") return tests::kPipelineBranchProgramWords;
+    BuiltinProgramSpec resolve_builtin_program(const std::string& name) {
+        if (name == "smoke") return BuiltinProgramSpec{ &tests::kSmokeProgramWords };
+        if (name == "arith") return BuiltinProgramSpec{ &tests::kArithProgramWords };
+        if (name == "logic") return BuiltinProgramSpec{ &tests::kLogicProgramWords };
+        if (name == "mem") return BuiltinProgramSpec{ &tests::kMemProgramWords };
+        if (name == "branch") return BuiltinProgramSpec{ &tests::kBranchProgramWords };
+        if (name == "r0") return BuiltinProgramSpec{ &tests::kR0WriteProtectProgramWords };
+        if (name == "slt") return BuiltinProgramSpec{ &tests::kSltProgramWords };
+        if (name == "lu12i") return BuiltinProgramSpec{ &tests::kLu12iProgramWords };
+        if (name == "uart") return BuiltinProgramSpec{ &tests::kUartProgramWords };
+        if (name == "invalid") return BuiltinProgramSpec{ &tests::kInvalidProgramWords };
+        if (name == "break-resume") {
+            return BuiltinProgramSpec{
+                &tests::kBreakResumeProgramWords,
+                &tests::kCounterTrapHandlerWords
+            };
+        }
+        if (name == "timer-interrupt") {
+            return BuiltinProgramSpec{
+                &tests::kTimerInterruptProgramWords,
+                &tests::kCounterTrapHandlerWords
+            };
+        }
+        if (name == "pipeline-nohaz") return BuiltinProgramSpec{ &tests::kPipelineNoHazardProgramWords };
+        if (name == "pipeline-raw") return BuiltinProgramSpec{ &tests::kPipelineRawHazardProgramWords };
+        if (name == "pipeline-forward") return BuiltinProgramSpec{ &tests::kPipelineForwardingProgramWords };
+        if (name == "pipeline-loaduse") return BuiltinProgramSpec{ &tests::kPipelineLoadUseProgramWords };
+        if (name == "pipeline-branch") return BuiltinProgramSpec{ &tests::kPipelineBranchProgramWords };
 
         throw std::runtime_error(
             "Unknown built-in program: " + name +
-            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz, pipeline-raw, pipeline-forward, pipeline-loaduse, pipeline-branch");
+            ". Supported names: smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, invalid, break-resume, timer-interrupt, pipeline-nohaz, pipeline-raw, pipeline-forward, pipeline-loaduse, pipeline-branch");
     }
 
     void print_usage(const char* argv0) {
@@ -90,7 +108,8 @@ namespace {
             << "  --trace <path>       Write JSONL execution trace for visualization.\n"
             << "  -h, --help           Show this help message.\n\n"
             << "Built-in programs:\n"
-            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz, pipeline-raw, pipeline-forward, pipeline-loaduse, pipeline-branch\n\n"
+            << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, invalid, break-resume, timer-interrupt,\n"
+            << "  pipeline-nohaz, pipeline-raw, pipeline-forward, pipeline-loaduse, pipeline-branch\n\n"
             << "Notes:\n"
             << "  Exactly one of --bin, --use-program, or --use-smoke must be provided.\n"
             << "  If --entry is not given, it defaults to the load base address.\n"
@@ -179,12 +198,19 @@ int main(int argc, char* argv[]) {
         std::string program_name;
 
         if (has_builtin) {
-            const auto& words = resolve_builtin_program(builtin_program_name);
-            if (words.empty()) {
+            const BuiltinProgramSpec builtin = resolve_builtin_program(builtin_program_name);
+            if (builtin.words == nullptr || builtin.words->empty()) {
                 throw std::runtime_error(
                     "Built-in program is empty: " + builtin_program_name);
             }
-            Loader::load_program_words(mem, load_base, words);
+            Loader::load_program_words(mem, load_base, *builtin.words);
+            if (builtin.exception_handler_words != nullptr
+                && !builtin.exception_handler_words->empty()) {
+                Loader::load_program_words(
+                    mem,
+                    config::EXCEPTION_VECTOR_BASE,
+                    *builtin.exception_handler_words);
+            }
             program_name = builtin_program_name;
         }
         else {
@@ -205,7 +231,17 @@ int main(int argc, char* argv[]) {
         cpu.set_pipeline_mode(pipeline_mode);
         cpu.reset(entry_pc);
 
-        cpu.run(max_steps);
+        try {
+            cpu.run(max_steps);
+        }
+        catch (const std::exception& ex) {
+            if (trace_enabled()) {
+                trace_summary_jsonl(cpu.state(), ex.what());
+                clear_trace_stream();
+                trace_out.close();
+            }
+            throw;
+        }
 
         if (trace_enabled()) {
             trace_summary_jsonl(cpu.state());
