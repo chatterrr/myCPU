@@ -32,6 +32,8 @@ struct TracePipelineInfo {
     std::string stall_reason;
     std::vector<std::string> bubble_stages;
     std::vector<std::string> flush_stages;
+    bool has_redirect = false;
+    uint32_t redirect_pc = 0;
 };
 
 // ---------- trace pipeline ----------

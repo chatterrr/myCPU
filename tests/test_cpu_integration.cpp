@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,8 @@
 #include "utils/debug.h"
 
 namespace {
+
+    inline constexpr uint64_t kBuiltinHaltBudget = 64;
 
     void expect(bool cond, const std::string& msg) {
         if (!cond) {
@@ -67,12 +70,112 @@ namespace {
         expect((s.status & CPU_STATUS_EXL) != 0u, label + ": EXL should be set in trap");
     }
 
+    std::string hex_u32(uint32_t value) {
+        std::ostringstream oss;
+        oss << "0x" << std::hex << std::setw(8) << std::setfill('0') << value;
+        return oss.str();
+    }
+
+    void expect_stop_reason(
+        const CPUState& s,
+        CPUState::StopReason expected_reason,
+        const std::string& label
+    ) {
+        expect(!s.running, label + ": CPU should have stopped");
+        expect(s.stop_reason == expected_reason, label + ": stop_reason mismatch");
+    }
+
+    void expect_normal_halt(const CPUState& s, const std::string& label) {
+        expect_stop_reason(s, CPUState::StopReason::HaltInstruction, label);
+        expect(s.exit_code == 0, label + ": halt should keep exit_code=0");
+    }
+
     std::string capture_trace_for_program(
         const std::vector<uint32_t>& words,
         uint64_t max_steps,
         bool pipeline_mode,
         uint32_t base = config::PROGRAM_BASE,
-        const std::vector<uint32_t>& handler_words = {}
+        const std::vector<uint32_t>& handler_words = {});
+
+    void run_program_to_halt(
+        ProgramContext& ctx,
+        const std::vector<uint32_t>& words,
+        bool pipeline_mode = false,
+        uint32_t base = config::PROGRAM_BASE,
+        uint64_t max_steps = kBuiltinHaltBudget
+    ) {
+        ctx.cpu.set_pipeline_mode(pipeline_mode);
+        load_and_reset(ctx, words, base);
+        ctx.cpu.run(max_steps);
+        expect_normal_halt(ctx.cpu.state(), "program halt");
+    }
+
+    std::vector<uint32_t> make_pipeline_branch_family_words(
+        uint32_t branch_opcode,
+        int32_t not_taken_lhs,
+        int32_t not_taken_rhs,
+        int32_t taken_lhs,
+        int32_t taken_rhs
+    ) {
+        return {
+            tests::ENC_2RI12(tests::OP_ADDI_W, 1, 0, not_taken_lhs),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 2, 0, not_taken_rhs),
+            tests::ENC_2RI16(branch_opcode, 2, 1, 2),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 20, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 1, 0, taken_lhs),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 2, 0, taken_rhs),
+            tests::ENC_2RI16(branch_opcode, 2, 1, 2),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 22, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 23, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 24, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 0, 0, 0),
+            tests::kHaltRaw,
+        };
+    }
+
+    void verify_pipeline_branch_family(
+        uint32_t branch_opcode,
+        const char* op_name,
+        int32_t not_taken_lhs,
+        int32_t not_taken_rhs,
+        int32_t taken_lhs,
+        int32_t taken_rhs
+    ) {
+        const std::vector<uint32_t> words = make_pipeline_branch_family_words(
+            branch_opcode,
+            not_taken_lhs,
+            not_taken_rhs,
+            taken_lhs,
+            taken_rhs
+        );
+
+        ProgramContext ctx;
+        run_program_to_halt(ctx, words, true);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[20] == 1u, std::string(op_name) + ": not-taken fall-through should execute");
+        expect(s.gpr[22] == 0u, std::string(op_name) + ": taken redirect should flush wrong-path write 1");
+        expect(s.gpr[23] == 0u, std::string(op_name) + ": taken redirect should flush wrong-path write 2");
+        expect(s.gpr[24] == 1u, std::string(op_name) + ": taken target should execute");
+
+        const std::string trace = capture_trace_for_program(words, kBuiltinHaltBudget, true);
+        expect_contains(trace, "\"op\":\"" + std::string(op_name) + "\"", std::string(op_name) + " trace should name the branch");
+        expect_contains(trace, "\"branched\":false", std::string(op_name) + " trace should show a not-taken case");
+        expect_contains(trace, "\"branched\":true", std::string(op_name) + " trace should show a taken case");
+        expect_contains(trace, "\"flush\":[\"IF\",\"ID\"]", std::string(op_name) + " trace should show IF/ID flush on redirect");
+        expect_contains(
+            trace,
+            "\"redirect_pc\":\"" + hex_u32(config::PROGRAM_BASE + 36u) + "\"",
+            std::string(op_name) + " trace should record the redirect target");
+    }
+
+    std::string capture_trace_for_program(
+        const std::vector<uint32_t>& words,
+        uint64_t max_steps,
+        bool pipeline_mode,
+        uint32_t base,
+        const std::vector<uint32_t>& handler_words
     ) {
         ProgramContext ctx;
         ctx.cpu.set_pipeline_mode(pipeline_mode);
@@ -93,8 +196,7 @@ namespace {
 
     void test_arith_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kArithProgramWords);
-        ctx.cpu.run(tests::kArithProgramSteps);
+        run_program_to_halt(ctx, tests::kArithProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "r0 must stay zero");
@@ -107,8 +209,7 @@ namespace {
 
     void test_logic_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kLogicProgramWords);
-        ctx.cpu.run(tests::kLogicProgramSteps);
+        run_program_to_halt(ctx, tests::kLogicProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "logic: r0 must stay zero");
@@ -119,8 +220,7 @@ namespace {
 
     void test_mem_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kMemProgramWords);
-        ctx.cpu.run(tests::kMemProgramSteps);
+        run_program_to_halt(ctx, tests::kMemProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[6] == 0x80, "mem: r6 should be 0x80");
@@ -130,8 +230,7 @@ namespace {
 
     void test_branch_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kBranchProgramWords);
-        ctx.cpu.run(tests::kBranchProgramSteps);
+        run_program_to_halt(ctx, tests::kBranchProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[4] == 12, "branch: r4 should be 12");
@@ -144,8 +243,7 @@ namespace {
 
     void test_smoke_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kSmokeProgramWords);
-        ctx.cpu.run(tests::kSmokeProgramSteps);
+        run_program_to_halt(ctx, tests::kSmokeProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "smoke: r0 must stay zero");
@@ -166,8 +264,7 @@ namespace {
 
     void test_r0_write_protect_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kR0WriteProtectProgramWords);
-        ctx.cpu.run(tests::kR0WriteProtectProgramSteps);
+        run_program_to_halt(ctx, tests::kR0WriteProtectProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "r0-protect: r0 must still be 0");
@@ -230,10 +327,25 @@ namespace {
         expect(s.cause == TrapCause::None, "ERTN should clear the latched cause");
     }
 
+    void test_unhandled_invalid_program_terminates_by_trap() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> words = {
+            0x00000000u,
+        };
+
+        load_and_reset(ctx, words);
+        ctx.cpu.run(4);
+
+        const CPUState& s = ctx.cpu.state();
+        expect_stop_reason(s, CPUState::StopReason::TrapTerminated, "unhandled-invalid");
+        expect(s.exit_code == 1, "unhandled-invalid: trap termination should use exit_code=1");
+        expect(s.cause == TrapCause::InvalidInstruction, "unhandled-invalid: cause should stay latched");
+        expect(s.pc == config::EXCEPTION_VECTOR_BASE, "unhandled-invalid: pc should stop at the exception vector");
+    }
+
     void test_slt_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kSltProgramWords);
-        ctx.cpu.run(tests::kSltProgramSteps);
+        run_program_to_halt(ctx, tests::kSltProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[3] == 1, "slt: r3 should be 1");
@@ -244,8 +356,7 @@ namespace {
 
     void test_lu12i_program() {
         ProgramContext ctx;
-        load_and_reset(ctx, tests::kLu12iProgramWords);
-        ctx.cpu.run(tests::kLu12iProgramSteps);
+        run_program_to_halt(ctx, tests::kLu12iProgramWords);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[13] == 0x12345000u, "lu12i: r13 should be 0x12345000");
@@ -284,6 +395,100 @@ namespace {
         expect(s.gpr[2] == 16u, "shift-imm: SLLI_W should shift left by 4");
         expect(s.gpr[4] == 0x3FFFFFFCu, "shift-imm: SRLI_W should zero-fill");
         expect(s.gpr[5] == 0xFFFFFFFCu, "shift-imm: SRAI_W should sign-extend");
+    }
+
+    void test_interpreter_shift_register_program() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> words = {
+            tests::ENC_2RI12(tests::OP_ADDI_W, 1, 0, 1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 2, 0, 4),
+            tests::ENC_3R(tests::OP_SLL_W, 3, 1, 2),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 4, 0, -16),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 5, 0, 2),
+            tests::ENC_3R(tests::OP_SRL_W, 6, 4, 5),
+            tests::ENC_3R(tests::OP_SRA_W, 7, 4, 5),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 8, 0, 33),
+            tests::ENC_3R(tests::OP_SLL_W, 9, 1, 8),
+            tests::kHaltRaw,
+        };
+
+        run_program_to_halt(ctx, words);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[3] == 16u, "shift-reg: SLL_W should shift left by a register amount");
+        expect(s.gpr[6] == 0x3FFFFFFCu, "shift-reg: SRL_W should zero-fill");
+        expect(s.gpr[7] == 0xFFFFFFFCu, "shift-reg: SRA_W should sign-extend");
+        expect(s.gpr[9] == 2u, "shift-reg: shift amount should be masked to 5 bits");
+    }
+
+    void test_interpreter_compare_immediate_program() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> words = {
+            tests::ENC_2RI12(tests::OP_ADDI_W, 1, 0, -1),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 2, 0, 1),
+            tests::ENC_2RI12(tests::OP_SLTI,  3, 1, 0),
+            tests::ENC_2RI12(tests::OP_SLTI,  4, 2, -1),
+            tests::ENC_2RI12(tests::OP_SLTUI, 5, 2, -1),
+            tests::ENC_2RI12(tests::OP_SLTUI, 6, 1, 1),
+            tests::kHaltRaw,
+        };
+
+        run_program_to_halt(ctx, words);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[3] == 1u, "cmp-imm: SLTI should use signed comparison");
+        expect(s.gpr[4] == 0u, "cmp-imm: SLTI should reject a larger lhs");
+        expect(s.gpr[5] == 1u, "cmp-imm: SLTUI should compare against the zero-extended immediate");
+        expect(s.gpr[6] == 0u, "cmp-imm: SLTUI should treat -1 as 0xFFFFFFFF");
+    }
+
+    void test_interpreter_logic_immediate_program() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> words = {
+            tests::ENC_1RI20(tests::OP_LU12I_W, 1, 0x12345),
+            tests::ENC_2RI12(tests::OP_ORI,  1, 1, 0x678),
+            tests::ENC_2RI12(tests::OP_ANDI, 2, 1, 0x0F0),
+            tests::ENC_2RI12(tests::OP_ORI,  3, 2, 0x00F),
+            tests::ENC_2RI12(tests::OP_XORI, 4, 3, 0x0FF),
+            tests::ENC_2RI12(tests::OP_XORI, 5, 1, 0x0FFF),
+            tests::kHaltRaw,
+        };
+
+        run_program_to_halt(ctx, words);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(s.gpr[1] == 0x12345678u, "logic-imm: ORI should update the low 12 bits");
+        expect(s.gpr[2] == 0x00000070u, "logic-imm: ANDI should zero-extend its immediate");
+        expect(s.gpr[3] == 0x0000007Fu, "logic-imm: ORI should preserve prior bits");
+        expect(s.gpr[4] == 0x00000080u, "logic-imm: XORI should flip only the masked bits");
+        expect(s.gpr[5] == 0x12345987u, "logic-imm: XORI should operate on the full register value");
+    }
+
+    void test_interpreter_byte_halfword_memory_program() {
+        ProgramContext ctx;
+        const std::vector<uint32_t> words = {
+            tests::ENC_2RI12(tests::OP_ADDI_W, 10, 0, 0x80),
+            tests::ENC_2RI12(tests::OP_ADDI_W, 1, 0, -1),
+            tests::ENC_2RI12(tests::OP_ST_B,   1, 10, 0),
+            tests::ENC_2RI12(tests::OP_LD_B,   2, 10, 0),
+            tests::ENC_2RI12(tests::OP_LD_BU,  3, 10, 0),
+            tests::ENC_1RI20(tests::OP_LU12I_W, 4, 0x12348),
+            tests::ENC_2RI12(tests::OP_ORI,    4, 4, 0x001),
+            tests::ENC_2RI12(tests::OP_ST_H,   4, 10, 2),
+            tests::ENC_2RI12(tests::OP_LD_H,   5, 10, 2),
+            tests::ENC_2RI12(tests::OP_LD_HU,  6, 10, 2),
+            tests::kHaltRaw,
+        };
+
+        run_program_to_halt(ctx, words);
+
+        const CPUState& s = ctx.cpu.state();
+        expect(ctx.mem.read8(0x80) == 0xFFu, "mem-bh: ST_B should truncate to the low byte");
+        expect(s.gpr[2] == 0xFFFFFFFFu, "mem-bh: LD_B should sign-extend the byte");
+        expect(s.gpr[3] == 0x000000FFu, "mem-bh: LD_BU should zero-extend the byte");
+        expect(ctx.mem.read16(0x82) == 0x8001u, "mem-bh: ST_H should keep the low halfword");
+        expect(s.gpr[5] == 0xFFFF8001u, "mem-bh: LD_H should sign-extend the halfword");
+        expect(s.gpr[6] == 0x00008001u, "mem-bh: LD_HU should zero-extend the halfword");
     }
 
     void test_branch_compare_program() {
@@ -383,16 +588,18 @@ namespace {
 
     void test_uart_e2e_program() {
         ProgramContext ctx;
+        ctx.cpu.set_pipeline_mode(false);
         load_and_reset(ctx, tests::kUartProgramWords);
 
         std::ostringstream capture;
         auto* old_buf = std::cout.rdbuf(capture.rdbuf());
 
-        ctx.cpu.run(tests::kUartProgramSteps);
+        ctx.cpu.run(kBuiltinHaltBudget);
 
         std::cout.rdbuf(old_buf);
 
         const CPUState& s = ctx.cpu.state();
+        expect_normal_halt(s, "uart-e2e");
         expect(s.gpr[15] == config::UART_ADDR, "uart-e2e: r15 should be UART_ADDR");
         expect(capture.str() == "Hi!", "uart-e2e: UART output should be Hi!");
     }
@@ -428,9 +635,7 @@ namespace {
 
     void test_pipeline_no_hazard_program() {
         ProgramContext ctx;
-        ctx.cpu.set_pipeline_mode(true);
-        load_and_reset(ctx, tests::kPipelineNoHazardProgramWords);
-        ctx.cpu.run(tests::kPipelineNoHazardProgramSteps);
+        run_program_to_halt(ctx, tests::kPipelineNoHazardProgramWords, true);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "pipeline-nohaz: r0 must stay zero");
@@ -442,9 +647,7 @@ namespace {
 
     void test_pipeline_raw_hazard_program() {
         ProgramContext ctx;
-        ctx.cpu.set_pipeline_mode(true);
-        load_and_reset(ctx, tests::kPipelineRawHazardProgramWords);
-        ctx.cpu.run(tests::kPipelineRawHazardProgramSteps);
+        run_program_to_halt(ctx, tests::kPipelineRawHazardProgramWords, true);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "pipeline-raw: r0 must stay zero");
@@ -455,9 +658,7 @@ namespace {
 
     void test_pipeline_forwarding_program() {
         ProgramContext ctx;
-        ctx.cpu.set_pipeline_mode(true);
-        load_and_reset(ctx, tests::kPipelineForwardingProgramWords);
-        ctx.cpu.run(tests::kPipelineForwardingProgramSteps);
+        run_program_to_halt(ctx, tests::kPipelineForwardingProgramWords, true);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "pipeline-fwd: r0 must stay zero");
@@ -469,9 +670,7 @@ namespace {
 
     void test_pipeline_load_use_program() {
         ProgramContext ctx;
-        ctx.cpu.set_pipeline_mode(true);
-        load_and_reset(ctx, tests::kPipelineLoadUseProgramWords, 0);
-        ctx.cpu.run(tests::kPipelineLoadUseProgramSteps);
+        run_program_to_halt(ctx, tests::kPipelineLoadUseProgramWords, true, 0);
 
         const uint32_t loaded_word = tests::kPipelineLoadUseDataWord;
         const CPUState& s = ctx.cpu.state();
@@ -483,9 +682,7 @@ namespace {
 
     void test_pipeline_branch_program() {
         ProgramContext ctx;
-        ctx.cpu.set_pipeline_mode(true);
-        load_and_reset(ctx, tests::kPipelineBranchProgramWords);
-        ctx.cpu.run(tests::kPipelineBranchProgramSteps);
+        run_program_to_halt(ctx, tests::kPipelineBranchProgramWords, true);
 
         const CPUState& s = ctx.cpu.state();
         expect(s.gpr[0] == 0, "pipeline-branch: r0 must stay zero");
@@ -496,6 +693,26 @@ namespace {
         expect(s.gpr[20] == 0, "pipeline-branch: r20 should remain 0 after flush");
         expect(s.gpr[21] == 0, "pipeline-branch: r21 should remain 0 after flush");
         expect(s.gpr[22] == 0, "pipeline-branch: r22 should remain 0 after flush");
+    }
+
+    void test_pipeline_bne_branch_instruction() {
+        verify_pipeline_branch_family(tests::OP_BNE, "BNE", 5, 5, 5, 7);
+    }
+
+    void test_pipeline_blt_branch_instruction() {
+        verify_pipeline_branch_family(tests::OP_BLT, "BLT", 5, -1, -1, 5);
+    }
+
+    void test_pipeline_bge_branch_instruction() {
+        verify_pipeline_branch_family(tests::OP_BGE, "BGE", -1, 5, 5, -1);
+    }
+
+    void test_pipeline_bltu_branch_instruction() {
+        verify_pipeline_branch_family(tests::OP_BLTU, "BLTU", -1, 1, 1, -1);
+    }
+
+    void test_pipeline_bgeu_branch_instruction() {
+        verify_pipeline_branch_family(tests::OP_BGEU, "BGEU", 1, -1, -1, 1);
     }
 
     void test_pipeline_ertn_resume_program() {
@@ -551,6 +768,9 @@ namespace {
         expect(thrown, "pipeline boundary test should throw on interpreter-only instructions");
         expect(ctx.cpu.state().exit_code == 1, "pipeline boundary test should set exit_code=1");
         expect(!ctx.cpu.state().running, "pipeline boundary test should stop the CPU");
+        expect(
+            ctx.cpu.state().stop_reason == CPUState::StopReason::RuntimeError,
+            "pipeline boundary test should mark runtime_error as the stop reason");
     }
 
     void test_pipeline_trace_records() {
@@ -574,6 +794,7 @@ namespace {
         );
         expect_contains(branch_trace, "\"flush\":[\"IF\",\"ID\"]", "branch trace should record flushed younger stages");
         expect_contains(branch_trace, "\"id\":{\"state\":\"flushed\"", "branch trace should mark the flushed ID stage");
+        expect_contains(branch_trace, "\"redirect_pc\":\"0x00001014\"", "branch trace should record the redirect target");
 
         const std::string compare_trace = capture_trace_for_program(
             tests::kBranchCompareProgramWords,
@@ -655,11 +876,16 @@ int main() {
         test_unaligned_access_program();
         test_out_of_range_access_program();
         test_invalid_program();
+        test_unhandled_invalid_program_terminates_by_trap();
 
         test_slt_program();
         test_sltu_program();
         test_nor_program();
         test_shift_immediate_program();
+        test_interpreter_shift_register_program();
+        test_interpreter_compare_immediate_program();
+        test_interpreter_logic_immediate_program();
+        test_interpreter_byte_halfword_memory_program();
         test_branch_compare_program();
         test_bl_program();
         test_jirl_program();
@@ -674,6 +900,11 @@ int main() {
         test_pipeline_forwarding_program();
         test_pipeline_load_use_program();
         test_pipeline_branch_program();
+        test_pipeline_bne_branch_instruction();
+        test_pipeline_blt_branch_instruction();
+        test_pipeline_bge_branch_instruction();
+        test_pipeline_bltu_branch_instruction();
+        test_pipeline_bgeu_branch_instruction();
         test_pipeline_ertn_resume_program();
         test_pipeline_rejects_interpreter_only_instruction();
         test_pipeline_trace_records();

@@ -307,6 +307,14 @@ void execute(CPUState& s, const DecodedInst& in, Memory& mem) {
         break;
     }
 
+    case Opcode::HALT: {
+        s.pc = pc0 + 4;
+        s.running = false;
+        s.exit_code = 0;
+        s.stop_reason = CPUState::StopReason::HaltInstruction;
+        break;
+    }
+
     case Opcode::INVALID:
     default:
         throw TrapException(TrapCause::InvalidInstruction, pc0, "invalid instruction");

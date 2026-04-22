@@ -111,6 +111,10 @@ DecodedInst decode(uint32_t raw) {
         d.op = Opcode::ERTN;
         return d;
     }
+    if (raw == kSimulatorHaltRaw) {
+        d.op = Opcode::HALT;
+        return d;
+    }
 
     // 1) 3R-type
     {
