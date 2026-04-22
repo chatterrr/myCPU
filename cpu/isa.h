@@ -22,7 +22,27 @@ struct CPUState {
 
     uint32_t last_inst = 0;
     int exit_code = 0;
+    enum class StopReason : uint32_t {
+        None = 0,
+        HaltInstruction,
+        TrapTerminated,
+        MaxStepsReached,
+        RuntimeError
+    } stop_reason = StopReason::None;
 };
+
+inline const char* stop_reason_to_string(CPUState::StopReason reason) {
+    switch (reason) {
+    case CPUState::StopReason::None: return "none";
+    case CPUState::StopReason::HaltInstruction: return "halt_instruction";
+    case CPUState::StopReason::TrapTerminated: return "trap_terminated";
+    case CPUState::StopReason::MaxStepsReached: return "max_steps_reached";
+    case CPUState::StopReason::RuntimeError: return "runtime_error";
+    }
+    return "unknown";
+}
+
+inline constexpr uint32_t kSimulatorHaltRaw = 0x6FFFFFFEu;
 
 enum class Opcode {
     ADD_W, SUB_W, ADDI_W, SLT, SLTU,
@@ -34,7 +54,7 @@ enum class Opcode {
     SLLI_W, SRLI_W, SRAI_W,
     B, BEQ, BNE, LU12I_W, PCADDU12I,
     BLT, BGE, BLTU, BGEU, BL, JIRL,
-    BREAK, SYSCALL, ERTN,
+    BREAK, SYSCALL, ERTN, HALT,
     INVALID
 };
 

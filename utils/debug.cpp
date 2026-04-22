@@ -137,6 +137,7 @@ const char* opcode_to_string(Opcode op) {
     case Opcode::BREAK: return "BREAK";
     case Opcode::SYSCALL: return "SYSCALL";
     case Opcode::ERTN: return "ERTN";
+    case Opcode::HALT: return "HALT";
     case Opcode::INVALID: return "INVALID";
     }
     return "UNKNOWN";
@@ -160,6 +161,7 @@ void dump_regs(const CPUState& cpu) {
         << " badv=0x" << std::setw(8) << cpu.badv
         << std::dec << " running=" << cpu.running
         << " cause=" << trap_cause_to_string(cpu.cause)
+        << " stop_reason=" << stop_reason_to_string(cpu.stop_reason)
         << " status=0x" << std::hex << std::setw(8) << std::setfill('0') << cpu.status
         << std::dec << " pending_interrupt=" << cpu.pending_interrupt
         << " exit_code=" << cpu.exit_code << "\n";
@@ -399,6 +401,13 @@ void trace_step_jsonl(
         write_json_string_array(os, pipeline.bubble_stages);
         os << ",\"flush\":";
         write_json_string_array(os, pipeline.flush_stages);
+        os << ",\"redirect_pc\":";
+        if (pipeline.has_redirect) {
+            write_json_string(os, hex_u32(pipeline.redirect_pc));
+        }
+        else {
+            os << "null";
+        }
         os << "}";
     }
 
@@ -424,6 +433,8 @@ void trace_summary_jsonl(const CPUState& cpu) {
     write_json_string(os, hex_u32(cpu.badv));
     os << ",\"cause\":";
     write_json_string(os, trap_cause_to_string(cpu.cause));
+    os << ",\"stop_reason\":";
+    write_json_string(os, stop_reason_to_string(cpu.stop_reason));
     os << ",\"status\":";
     write_json_string(os, hex_u32(cpu.status));
     os << ",\"running\":" << (cpu.running ? "true" : "false")

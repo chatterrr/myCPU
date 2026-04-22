@@ -26,7 +26,7 @@ namespace {
     }
 
     constexpr const char* kPipelineTeachingSupportSummary =
-        "ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU/ERTN";
+        "ADD_W/SUB_W/ADDI_W/LD_W/B/BEQ/BNE/BLT/BGE/BLTU/BGEU/ERTN/HALT";
 
     // Keep the teaching pipeline surface intentionally narrower than execute():
     // single-cycle mode is the reference implementation, while pipeline mode
@@ -45,6 +45,7 @@ namespace {
         case Opcode::BLTU:
         case Opcode::BGEU:
         case Opcode::ERTN:
+        case Opcode::HALT:
             return true;
         default:
             return false;
@@ -255,6 +256,7 @@ namespace {
         uint32_t alu_result = 0;
         bool branch_taken = false;
         uint32_t branch_target = 0;
+        bool halt_requested = false;
     };
 
     PipelineExecuteResult pipeline_execute_stage(
@@ -322,6 +324,9 @@ namespace {
             result.branch_taken = true;
             result.branch_target = state.epc;
             return result;
+        case Opcode::HALT:
+            result.halt_requested = true;
+            return result;
         default:
             throw std::runtime_error("unsupported instruction reached pipeline EX stage");
         }
@@ -342,6 +347,7 @@ CPU::CPU(Memory& mem) : mem_(mem) {
     state_.last_trap_was_interrupt = false;
     state_.last_inst = 0;
     state_.exit_code = 0;
+    state_.stop_reason = CPUState::StopReason::None;
     reset_pipeline();
 }
 
@@ -358,6 +364,7 @@ void CPU::reset(uint32_t pc_start) {
     state_.last_trap_was_interrupt = false;
     state_.last_inst = 0;
     state_.exit_code = 0;
+    state_.stop_reason = CPUState::StopReason::None;
 
     state_.gpr[3] = config::STACK_TOP;
     state_.gpr[0] = 0;
@@ -370,6 +377,21 @@ bool CPU::interrupts_enabled() const noexcept {
 
 bool CPU::exception_level_active() const noexcept {
     return (state_.status & CPU_STATUS_EXL) != 0u;
+}
+
+bool CPU::has_exception_handler() const {
+    try {
+        return mem_.read32(state_.exception_vector_base) != 0u;
+    }
+    catch (const TrapException&) {
+        return false;
+    }
+}
+
+void CPU::stop_cpu(CPUState::StopReason reason, int exit_code) noexcept {
+    state_.running = false;
+    state_.stop_reason = reason;
+    state_.exit_code = exit_code;
 }
 
 void CPU::enter_trap(
@@ -397,6 +419,9 @@ void CPU::handle_trap_exception(
     state_.last_inst = raw;
     state_.gpr[0] = 0;
     reset_pipeline();
+    if (!has_exception_handler()) {
+        stop_cpu(CPUState::StopReason::TrapTerminated, 1);
+    }
     trace_note_trap(false, ex.cause(), state_.epc, state_.exception_vector_base, state_.badv);
     trace_step_jsonl(trap_pc, raw, inst, before, state_);
 }
@@ -463,6 +488,9 @@ void CPU::step() {
         state_.last_inst = 0;
         state_.gpr[0] = 0;
         reset_pipeline();
+        if (!has_exception_handler()) {
+            stop_cpu(CPUState::StopReason::TrapTerminated, 1);
+        }
         trace_note_trap(true, cause, state_.epc, state_.exception_vector_base, state_.badv);
         trace_step_jsonl(pc_before, 0, make_invalid_decoded_inst(), before, state_);
         return;
@@ -510,7 +538,9 @@ void CPU::step_single_cycle() {
         trace_step_jsonl(pc_before, raw, inst, before, state_);
 
         // Keep pipeline stage registers advancing without changing the stable execution path yet.
-        advance_pipeline_skeleton(pc_before, raw);
+        if (state_.running) {
+            advance_pipeline_skeleton(pc_before, raw);
+        }
     }
     catch (const TrapException& ex) {
         handle_trap_exception(ex, pc_before, raw, inst, before);
@@ -561,6 +591,7 @@ void CPU::step_pipeline_mode() {
         uint32_t control_target_pc = state_.pc;
         bool branch_resolved = false;
         bool branch_taken = false;
+        bool halt_requested = false;
 
         if (pipeline_.id_ex.valid) {
             trap_pc = pipeline_.id_ex.pc;
@@ -578,8 +609,13 @@ void CPU::step_pipeline_mode() {
             next.ex_mem.alu_result = ex_result.alu_result;
             branch_resolved = pipeline_is_control_flow(pipeline_.id_ex.inst);
             branch_taken = ex_result.branch_taken;
-            flush_for_control_hazard = ex_result.branch_taken;
+            halt_requested = ex_result.halt_requested;
+            flush_for_control_hazard = ex_result.branch_taken || ex_result.halt_requested;
             control_target_pc = ex_result.branch_target;
+
+            if (halt_requested) {
+                state_.last_inst = pipeline_.id_ex.inst.raw;
+            }
 
             if (pipeline_.id_ex.inst.op == Opcode::ERTN) {
                 state_.status &= ~CPU_STATUS_EXL;
@@ -644,7 +680,13 @@ void CPU::step_pipeline_mode() {
 
         if (flush_for_control_hazard) {
             // Resolve control flow in EX and conservatively bubble the younger stages.
-            state_.pc = control_target_pc;
+            if (halt_requested) {
+                state_.pc = pipeline_.id_ex.pc + 4u;
+                stop_cpu(CPUState::StopReason::HaltInstruction, 0);
+            }
+            else {
+                state_.pc = control_target_pc;
+            }
         }
         else if (stall_for_raw_hazard) {
             next.if_id = pipeline_.if_id;
@@ -729,6 +771,10 @@ void CPU::step_pipeline_mode() {
         if (flush_for_control_hazard) {
             pipeline_trace.flush_stages.push_back("IF");
             pipeline_trace.flush_stages.push_back("ID");
+            if (!halt_requested && branch_taken) {
+                pipeline_trace.has_redirect = true;
+                pipeline_trace.redirect_pc = control_target_pc;
+            }
         }
 
         state_.gpr[0] = 0;
@@ -759,10 +805,12 @@ void CPU::run(uint64_t max_steps) {
         for (uint64_t i = 0; i < max_steps && state_.running; ++i) {
             step();
         }
+        if (state_.running) {
+            stop_cpu(CPUState::StopReason::MaxStepsReached, 2);
+        }
     }
     catch (const std::runtime_error&) {
-        state_.exit_code = 1;
-        state_.running = false;
+        stop_cpu(CPUState::StopReason::RuntimeError, 1);
         throw;
     }
 }

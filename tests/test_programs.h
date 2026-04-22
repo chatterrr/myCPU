@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "cpu/isa.h"
+
 namespace tests {
 
     // ---------- encoders ----------
@@ -39,6 +41,9 @@ namespace tests {
     constexpr uint32_t OP_SUB_W = 0b00000000000100010;
     constexpr uint32_t OP_SLT = 0b00000000000100100;
     constexpr uint32_t OP_SLTU = 0b00000000000100101;
+    constexpr uint32_t OP_SLL_W = 0b00000000000101110;
+    constexpr uint32_t OP_SRL_W = 0b00000000000101111;
+    constexpr uint32_t OP_SRA_W = 0b00000000000110000;
     constexpr uint32_t OP_NOR = 0b00000000000101000;
     constexpr uint32_t OP_AND = 0b00000000000101001;
     constexpr uint32_t OP_OR = 0b00000000000101010;
@@ -49,9 +54,20 @@ namespace tests {
     constexpr uint32_t OP_BREAK = 0b00000000001010100;
     constexpr uint32_t OP_SYSCALL = 0b00000000001010110;
 
+    constexpr uint32_t OP_SLTI = 0b0000001000;
+    constexpr uint32_t OP_SLTUI = 0b0000001001;
     constexpr uint32_t OP_ADDI_W = 0b0000001010;
+    constexpr uint32_t OP_ANDI = 0b0000001101;
+    constexpr uint32_t OP_ORI = 0b0000001110;
+    constexpr uint32_t OP_XORI = 0b0000001111;
+    constexpr uint32_t OP_LD_B = 0b0010100000;
+    constexpr uint32_t OP_LD_H = 0b0010100001;
     constexpr uint32_t OP_LD_W = 0b0010100010;
+    constexpr uint32_t OP_ST_B = 0b0010100100;
+    constexpr uint32_t OP_ST_H = 0b0010100101;
     constexpr uint32_t OP_ST_W = 0b0010100110;
+    constexpr uint32_t OP_LD_BU = 0b0010101000;
+    constexpr uint32_t OP_LD_HU = 0b0010101001;
 
     constexpr uint32_t OP_LU12I_W = 0b0001010;
     constexpr uint32_t OP_PCADDU12I = 0b0001110;
@@ -68,6 +84,7 @@ namespace tests {
     constexpr uint32_t kBreakRaw = ENC_3R(OP_BREAK, 0, 0, 0);
     constexpr uint32_t kSyscallRaw = ENC_3R(OP_SYSCALL, 0, 0, 0);
     constexpr uint32_t kErtnRaw = 0x06483800u;
+    constexpr uint32_t kHaltRaw = kSimulatorHaltRaw;
 
     // ---------- expected step counts ----------
     inline constexpr uint64_t kArithProgramSteps = 4;
@@ -102,6 +119,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 2, 0, 7),
         ENC_3R(OP_ADD_W, 4, 1, 2),
         ENC_3R(OP_SUB_W, 5, 2, 1),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kLogicProgramWords = {
@@ -110,6 +128,7 @@ namespace tests {
         ENC_3R(OP_AND, 10, 4, 4),
         ENC_3R(OP_OR,  11, 4, 5),
         ENC_3R(OP_XOR, 12, 4, 5),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kMemProgramWords = {
@@ -117,6 +136,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 6, 0, 0x80),
         ENC_2RI12(OP_ST_W,   4, 6, 0),
         ENC_2RI12(OP_LD_W,   7, 6, 0),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kBranchProgramWords = {
@@ -132,6 +152,7 @@ namespace tests {
 
         ENC_I26(OP_B, 1),
         ENC_2RI12(OP_ADDI_W, 22, 0, 1),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kSmokeProgramWords = {
@@ -156,11 +177,13 @@ namespace tests {
         ENC_3R(OP_AND, 10, 4, 7),
         ENC_3R(OP_OR,  11, 4, 5),
         ENC_3R(OP_XOR, 12, 4, 5),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kR0WriteProtectProgramWords = {
         ENC_2RI12(OP_ADDI_W, 0, 0, 123),
         ENC_2RI12(OP_ADDI_W, 1, 0,   5),
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kUnalignedAccessProgramWords = {
@@ -187,6 +210,7 @@ namespace tests {
         ENC_3R(OP_SLT,    4, 2,  1),   // r4 = (2 < 1)  -> 0
         ENC_2RI12(OP_ADDI_W, 5, 0, -1),   // r5 = -1
         ENC_3R(OP_SLT,    7, 5,  1),   // r7 = (-1 < 1) -> 1
+        kHaltRaw,
     };
 
     inline const std::vector<uint32_t> kSltuProgramWords = {
@@ -256,7 +280,8 @@ namespace tests {
     inline const std::vector<uint32_t> kLu12iProgramWords = {
         ENC_1RI20(OP_LU12I_W, 13, 0x12345),  // r13 = 0x12345000
         ENC_1RI20(OP_LU12I_W, 14, 0x1FE00),  // r14 = 0x1FE00000
-        ENC_2RI12(OP_ADDI_W,  14, 14, 0x1E0) // r14 = 0x1FE001E0
+        ENC_2RI12(OP_ADDI_W,  14, 14, 0x1E0), // r14 = 0x1FE001E0
+        kHaltRaw,
     };
 
     // 12) UART end-to-end
@@ -272,6 +297,7 @@ namespace tests {
 
         ENC_2RI12(OP_ADDI_W, 16, 0, '!'),
         ENC_2RI12(OP_ST_W,   16, 15, 0),
+        kHaltRaw,
     };
 
     // 13) minimal no-hazard pipeline demo
@@ -290,6 +316,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        kHaltRaw,
     };
 
     // 14) pipeline RAW hazard demo without hand-written spacing
@@ -300,6 +327,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        kHaltRaw,
     };
 
     // 15) pipeline forwarding demo:
@@ -312,6 +340,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        kHaltRaw,
     };
 
     inline constexpr uint32_t kPipelineLoadUseDataWord =
@@ -326,6 +355,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // spacer / harmless
         kPipelineLoadUseDataWord,       // data word, also executes as a harmless rd=0 ADDI
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        kHaltRaw,
     };
 
     // 17) pipeline branch/control hazard demo:
@@ -346,6 +376,7 @@ namespace tests {
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
         ENC_2RI12(OP_ADDI_W, 0, 0, 0),  // drain
+        kHaltRaw,
     };
 
 }  // namespace tests

@@ -20,6 +20,8 @@ public:
 private:
     bool interrupts_enabled() const noexcept;
     bool exception_level_active() const noexcept;
+    bool has_exception_handler() const;
+    void stop_cpu(CPUState::StopReason reason, int exit_code) noexcept;
     void enter_trap(
         TrapCause cause,
         uint32_t trap_pc,

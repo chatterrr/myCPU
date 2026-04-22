@@ -93,7 +93,9 @@ namespace {
             << "  smoke, arith, logic, mem, branch, r0, slt, lu12i, uart, pipeline-nohaz, pipeline-raw, pipeline-forward, pipeline-loaduse, pipeline-branch\n\n"
             << "Notes:\n"
             << "  Exactly one of --bin, --use-program, or --use-smoke must be provided.\n"
-            << "  If --entry is not given, it defaults to the load base address.\n";
+            << "  If --entry is not given, it defaults to the load base address.\n"
+            << "  Built-in demo programs end with a simulator HALT instruction and can stop without --max-steps.\n"
+            << "  If execution stops because the step budget is exhausted first, the CLI exits with code 2.\n";
     }
 
 }  // namespace
@@ -215,8 +217,30 @@ int main(int argc, char* argv[]) {
             dump_regs(cpu.state());
         }
 
-        std::cout << "[DONE] Program finished. exit_code=" << cpu.state().exit_code << '\n';
-        return cpu.state().exit_code;
+        const CPUState& s = cpu.state();
+        if (s.stop_reason == CPUState::StopReason::HaltInstruction) {
+            std::cout << "[DONE] Program stopped normally. reason="
+                << stop_reason_to_string(s.stop_reason)
+                << " exit_code=" << s.exit_code << '\n';
+        }
+        else if (s.stop_reason == CPUState::StopReason::TrapTerminated) {
+            std::cout << "[STOP] Program terminated by trap. reason="
+                << stop_reason_to_string(s.stop_reason)
+                << " cause=" << trap_cause_to_string(s.cause)
+                << " exit_code=" << s.exit_code << '\n';
+        }
+        else if (s.stop_reason == CPUState::StopReason::MaxStepsReached) {
+            std::cout << "[STOP] Step budget exhausted before program halted. reason="
+                << stop_reason_to_string(s.stop_reason)
+                << " max_steps=" << max_steps
+                << " exit_code=" << s.exit_code << '\n';
+        }
+        else {
+            std::cout << "[DONE] Program finished. reason="
+                << stop_reason_to_string(s.stop_reason)
+                << " exit_code=" << s.exit_code << '\n';
+        }
+        return s.exit_code;
     }
     catch (const std::exception& ex) {
         if (trace_enabled()) {
