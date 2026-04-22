@@ -6,10 +6,15 @@
 #include <sstream>
 #include <string>
 
+#include "config/constants.h"
+
 namespace {
+
+    constexpr const char* kTraceSchemaVersion = "workbench-v1";
 
     std::ostream* g_trace_stream = nullptr;
     uint64_t g_trace_step_counter = 0;
+    bool g_trace_pipeline_mode = false;
 
     struct TraceExtras {
         bool has_branch = false;
@@ -31,6 +36,12 @@ namespace {
 
         bool has_pipeline = false;
         TracePipelineInfo pipeline;
+
+        std::vector<TraceMemoryAccess> memory_accesses;
+        std::vector<TraceDeviceEvent> device_events;
+
+        bool has_timer = false;
+        TimerSnapshot timer{};
     };
 
     TraceExtras g_trace_extras{};
@@ -89,6 +100,108 @@ namespace {
         }
 
         os << "}";
+    }
+
+    void write_trace_pipeline_forwarding_array(
+        std::ostream& os,
+        const std::vector<TracePipelineForwarding>& forwarding) {
+        os << "[";
+        for (size_t i = 0; i < forwarding.size(); ++i) {
+            if (i > 0) {
+                os << ",";
+            }
+
+            const TracePipelineForwarding& item = forwarding[i];
+            os << "{\"from_stage\":";
+            write_json_string(os, item.from_stage);
+            os << ",\"to_stage\":";
+            write_json_string(os, item.to_stage);
+            os << ",\"operand\":";
+            write_json_string(os, item.operand);
+            os << ",\"reg\":" << item.reg;
+            os << ",\"value\":";
+            write_json_string(os, hex_u32(item.value));
+            os << "}";
+        }
+        os << "]";
+    }
+
+    void write_trace_memory_access_array(
+        std::ostream& os,
+        const std::vector<TraceMemoryAccess>& accesses) {
+        os << "[";
+        for (size_t i = 0; i < accesses.size(); ++i) {
+            if (i > 0) {
+                os << ",";
+            }
+
+            const TraceMemoryAccess& item = accesses[i];
+            os << "{\"kind\":";
+            write_json_string(os, item.kind);
+            os << ",\"addr\":";
+            write_json_string(os, hex_u32(item.addr));
+            os << ",\"value\":";
+            write_json_string(os, hex_u32(item.value));
+            os << ",\"width\":" << item.width;
+            os << ",\"target\":";
+            write_json_string(os, item.target);
+            os << ",\"via\":";
+            write_json_string(os, item.via_bus ? "bus" : "memory");
+            os << "}";
+        }
+        os << "]";
+    }
+
+    void write_trace_device_event_array(
+        std::ostream& os,
+        const std::vector<TraceDeviceEvent>& events) {
+        os << "[";
+        for (size_t i = 0; i < events.size(); ++i) {
+            if (i > 0) {
+                os << ",";
+            }
+
+            const TraceDeviceEvent& item = events[i];
+            os << "{\"device\":";
+            write_json_string(os, item.device);
+            os << ",\"kind\":";
+            write_json_string(os, item.kind);
+
+            if (item.has_addr) {
+                os << ",\"addr\":";
+                write_json_string(os, hex_u32(item.addr));
+            }
+
+            if (item.has_value) {
+                os << ",\"value\":";
+                write_json_string(os, hex_u32(item.value));
+                os << ",\"width\":" << item.width;
+            }
+
+            if (!item.text.empty()) {
+                os << ",\"text\":";
+                write_json_string(os, item.text);
+            }
+
+            if (!item.cause.empty()) {
+                os << ",\"cause\":";
+                write_json_string(os, item.cause);
+            }
+
+            os << "}";
+        }
+        os << "]";
+    }
+
+    void write_timer_snapshot(std::ostream& os, const TimerSnapshot& snapshot) {
+        os << "{\"control\":";
+        write_json_string(os, hex_u32(snapshot.control));
+        os << ",\"interval\":" << snapshot.interval
+            << ",\"remaining\":" << snapshot.remaining
+            << ",\"enabled\":" << (snapshot.enabled ? "true" : "false")
+            << ",\"periodic\":" << (snapshot.periodic ? "true" : "false")
+            << ",\"interrupt_enabled\":" << (snapshot.interrupt_enabled ? "true" : "false")
+            << "}";
     }
 
 }  // namespace
@@ -188,12 +301,14 @@ void dump_inst(uint32_t pc, uint32_t raw, const DecodedInst& inst) {
 void set_trace_stream(std::ostream* os) {
     g_trace_stream = os;
     g_trace_step_counter = 0;
+    g_trace_pipeline_mode = false;
     g_trace_extras = TraceExtras{};
 }
 
 void clear_trace_stream() {
     g_trace_stream = nullptr;
     g_trace_step_counter = 0;
+    g_trace_pipeline_mode = false;
     g_trace_extras = TraceExtras{};
 }
 
@@ -216,9 +331,64 @@ void trace_note_mem_write(uint32_t addr, uint32_t value) {
     g_trace_extras.mem_write_value = value;
 }
 
+void trace_note_mem_access(
+    const char* kind,
+    uint32_t addr,
+    uint32_t value,
+    uint32_t width,
+    const char* target,
+    bool via_bus) {
+    if (!g_trace_stream) {
+        return;
+    }
+
+    TraceMemoryAccess access{};
+    access.kind = (kind != nullptr) ? kind : "access";
+    access.addr = addr;
+    access.value = value;
+    access.width = width;
+    access.target = (target != nullptr) ? target : "memory";
+    access.via_bus = via_bus;
+    g_trace_extras.memory_accesses.push_back(access);
+
+    if (access.target != "memory") {
+        TraceDeviceEvent event{};
+        event.device = access.target;
+        event.kind = std::string(via_bus ? "bus_" : "") + access.kind;
+        event.has_addr = true;
+        event.addr = addr;
+        event.has_value = true;
+        event.value = value;
+        event.width = width;
+        g_trace_extras.device_events.push_back(event);
+    }
+}
+
 void trace_note_uart_char(uint8_t ch) {
+    if (!g_trace_stream) {
+        return;
+    }
+
     g_trace_extras.has_uart = true;
     g_trace_extras.uart_text.push_back(static_cast<char>(ch));
+
+    TraceDeviceEvent event{};
+    event.device = "uart";
+    event.kind = "tx";
+    event.text.push_back(static_cast<char>(ch));
+    g_trace_extras.device_events.push_back(event);
+}
+
+void trace_note_device_interrupt(const char* device, const char* cause) {
+    if (!g_trace_stream) {
+        return;
+    }
+
+    TraceDeviceEvent event{};
+    event.device = (device != nullptr) ? device : "device";
+    event.kind = "interrupt_raised";
+    event.cause = (cause != nullptr) ? cause : "unknown";
+    g_trace_extras.device_events.push_back(event);
 }
 
 void trace_note_trap(bool interrupt, TrapCause cause, uint32_t epc, uint32_t vector, uint32_t badv) {
@@ -228,6 +398,15 @@ void trace_note_trap(bool interrupt, TrapCause cause, uint32_t epc, uint32_t vec
     g_trace_extras.trap_epc = epc;
     g_trace_extras.trap_vector = vector;
     g_trace_extras.trap_badv = badv;
+}
+
+void trace_note_timer_snapshot(const TimerSnapshot& snapshot) {
+    if (!g_trace_stream) {
+        return;
+    }
+
+    g_trace_extras.has_timer = true;
+    g_trace_extras.timer = snapshot;
 }
 
 void trace_note_pipeline(const TracePipelineInfo& info) {
@@ -245,15 +424,31 @@ void trace_meta_jsonl(
         return;
     }
 
+    g_trace_pipeline_mode = pipeline_mode;
+
     std::ostream& os = *g_trace_stream;
-    os << "{\"type\":\"meta\",\"program\":";
+    os << "{\"type\":\"meta\",\"schema_version\":";
+    write_json_string(os, kTraceSchemaVersion);
+    os << ",\"program\":";
     write_json_string(os, program_name);
+    os << ",\"mode\":";
+    write_json_string(os, pipeline_mode ? "pipeline" : "interpreter");
     os << ",\"load_base\":";
     write_json_string(os, hex_u32(load_base));
     os << ",\"entry_pc\":";
     write_json_string(os, hex_u32(entry_pc));
     os << ",\"max_steps\":" << max_steps
         << ",\"pipeline_mode\":" << (pipeline_mode ? "true" : "false")
+        << ",\"device_map\":["
+        << "{\"name\":\"uart\",\"base\":";
+    write_json_string(os, hex_u32(config::UART_ADDR));
+    os << ",\"size\":";
+    write_json_string(os, hex_u32(config::UART_SIZE));
+    os << "},{\"name\":\"timer\",\"base\":";
+    write_json_string(os, hex_u32(config::TIMER_ADDR));
+    os << ",\"size\":";
+    write_json_string(os, hex_u32(config::TIMER_SIZE));
+    os << "}]"
         << "}\n";
 }
 
@@ -284,6 +479,21 @@ void trace_step_jsonl(
     write_json_string(os, hex_u32(after.pc));
     os << ",\"running\":" << (after.running ? "true" : "false")
         << ",\"exit_code\":" << after.exit_code;
+
+    os << ",\"trap_state\":{\"cause\":";
+    write_json_string(os, trap_cause_to_string(after.cause));
+    os << ",\"epc\":";
+    write_json_string(os, hex_u32(after.epc));
+    os << ",\"vector\":";
+    write_json_string(os, hex_u32(after.exception_vector_base));
+    os << ",\"badv\":";
+    write_json_string(os, hex_u32(after.badv));
+    os << ",\"status\":";
+    write_json_string(os, hex_u32(after.status));
+    os << ",\"exl\":" << (((after.status & CPU_STATUS_EXL) != 0u) ? "true" : "false")
+        << ",\"pending_interrupt\":" << (after.pending_interrupt ? "true" : "false")
+        << ",\"last_trap_was_interrupt\":" << (after.last_trap_was_interrupt ? "true" : "false")
+        << "}";
 
     os << ",\"exception\":";
     if (g_trace_extras.has_trap) {
@@ -356,6 +566,12 @@ void trace_step_jsonl(
     }
     os << "]";
 
+    os << ",\"memory_accesses\":";
+    write_trace_memory_access_array(os, g_trace_extras.memory_accesses);
+
+    os << ",\"device_events\":";
+    write_trace_device_event_array(os, g_trace_extras.device_events);
+
     os << ",\"mem_write\":";
     if (g_trace_extras.has_mem_write) {
         os << "{\"addr\":";
@@ -371,6 +587,14 @@ void trace_step_jsonl(
     os << ",\"uart\":";
     if (g_trace_extras.has_uart) {
         write_json_string(os, g_trace_extras.uart_text);
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"timer\":";
+    if (g_trace_extras.has_timer) {
+        write_timer_snapshot(os, g_trace_extras.timer);
     }
     else {
         os << "null";
@@ -401,6 +625,9 @@ void trace_step_jsonl(
         write_json_string_array(os, pipeline.bubble_stages);
         os << ",\"flush\":";
         write_json_string_array(os, pipeline.flush_stages);
+        os << ",\"load_use\":" << (pipeline.load_use ? "true" : "false");
+        os << ",\"forwarding\":";
+        write_trace_pipeline_forwarding_array(os, pipeline.forwarding);
         os << ",\"redirect_pc\":";
         if (pipeline.has_redirect) {
             write_json_string(os, hex_u32(pipeline.redirect_pc));
@@ -414,13 +641,18 @@ void trace_step_jsonl(
     os << "}\n";
 }
 
-void trace_summary_jsonl(const CPUState& cpu) {
+void trace_summary_jsonl(const CPUState& cpu, const char* error_message) {
     if (!g_trace_stream) {
         return;
     }
 
     std::ostream& os = *g_trace_stream;
     os << "{\"type\":\"summary\""
+        << ",\"schema_version\":";
+    write_json_string(os, kTraceSchemaVersion);
+    os << ",\"mode\":";
+    write_json_string(os, g_trace_pipeline_mode ? "pipeline" : "interpreter");
+    os << ",\"steps\":" << g_trace_step_counter
         << ",\"pc\":";
     write_json_string(os, hex_u32(cpu.pc));
     os << ",\"last_inst\":";
@@ -437,11 +669,21 @@ void trace_summary_jsonl(const CPUState& cpu) {
     write_json_string(os, stop_reason_to_string(cpu.stop_reason));
     os << ",\"status\":";
     write_json_string(os, hex_u32(cpu.status));
-    os << ",\"running\":" << (cpu.running ? "true" : "false")
+    os << ",\"exl\":" << (((cpu.status & CPU_STATUS_EXL) != 0u) ? "true" : "false")
+        << ",\"running\":" << (cpu.running ? "true" : "false")
+        << ",\"last_trap_was_interrupt\":" << (cpu.last_trap_was_interrupt ? "true" : "false")
         << ",\"pending_interrupt\":" << (cpu.pending_interrupt ? "true" : "false")
         << ",\"exit_code\":" << cpu.exit_code
-        << ",\"regs\":[";
+        << ",\"error_message\":";
 
+    if (error_message != nullptr) {
+        write_json_string(os, error_message);
+    }
+    else {
+        os << "null";
+    }
+
+    os << ",\"regs\":[";
     for (int i = 0; i < 32; ++i) {
         if (i > 0) {
             os << ",";

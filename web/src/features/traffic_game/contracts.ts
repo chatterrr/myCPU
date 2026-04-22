@@ -106,6 +106,6 @@ export interface DispatchPieceSnapshot {
 export const dispatchKindLabels: Record<DispatchBlockKind, string> = {
   alu: "算术推进",
   forward: "旁路直送",
-  "load-use": "装载停顿",
+  "load-use": "Load-use 停顿",
   "branch-flush": "分支冲刷"
 };

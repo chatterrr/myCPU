@@ -7,6 +7,7 @@
 
 #include "config/constants.h"
 #include "cpu/trap.h"
+#include "utils/debug.h"
 
 namespace {
 std::string hex32(uint32_t value) {
@@ -52,7 +53,9 @@ uint8_t Memory::read8(uint32_t addr) const {
         return value;
     }
     check_range(addr, 1);
-    return data_[addr];
+    value = data_[addr];
+    trace_note_mem_access("read", addr, value, 1u, "memory", false);
+    return value;
 }
 
 uint16_t Memory::read16(uint32_t addr) const {
@@ -62,21 +65,35 @@ uint16_t Memory::read16(uint32_t addr) const {
         return value;
     }
     check_range(addr, 2);
-    return static_cast<uint16_t>(data_[addr]) |
-           (static_cast<uint16_t>(data_[addr + 1]) << 8u);
+    value = static_cast<uint16_t>(data_[addr]) |
+            (static_cast<uint16_t>(data_[addr + 1]) << 8u);
+    trace_note_mem_access("read", addr, value, 2u, "memory", false);
+    return value;
 }
 
 uint32_t Memory::read32(uint32_t addr) const {
+    return read32_impl(addr, true);
+}
+
+uint32_t Memory::fetch32(uint32_t addr) const {
+    return read32_impl(addr, false);
+}
+
+uint32_t Memory::read32_impl(uint32_t addr, bool trace_access) const {
     check_alignment(addr, 4);
     uint32_t value = 0;
     if (bus_.try_read32(addr, value)) {
         return value;
     }
     check_range(addr, 4);
-    return static_cast<uint32_t>(data_[addr]) |
-           (static_cast<uint32_t>(data_[addr + 1]) << 8u) |
-           (static_cast<uint32_t>(data_[addr + 2]) << 16u) |
-           (static_cast<uint32_t>(data_[addr + 3]) << 24u);
+    value = static_cast<uint32_t>(data_[addr]) |
+            (static_cast<uint32_t>(data_[addr + 1]) << 8u) |
+            (static_cast<uint32_t>(data_[addr + 2]) << 16u) |
+            (static_cast<uint32_t>(data_[addr + 3]) << 24u);
+    if (trace_access) {
+        trace_note_mem_access("read", addr, value, 4u, "memory", false);
+    }
+    return value;
 }
 
 void Memory::write8(uint32_t addr, uint8_t value) {
@@ -85,6 +102,7 @@ void Memory::write8(uint32_t addr, uint8_t value) {
     }
     check_range(addr, 1);
     data_[addr] = value;
+    trace_note_mem_access("write", addr, value, 1u, "memory", false);
 }
 
 void Memory::write16(uint32_t addr, uint16_t value) {
@@ -95,6 +113,7 @@ void Memory::write16(uint32_t addr, uint16_t value) {
     check_range(addr, 2);
     data_[addr] = static_cast<uint8_t>(value & 0xFFu);
     data_[addr + 1] = static_cast<uint8_t>((value >> 8u) & 0xFFu);
+    trace_note_mem_access("write", addr, value, 2u, "memory", false);
 }
 
 void Memory::write32(uint32_t addr, uint32_t value) {
@@ -107,6 +126,7 @@ void Memory::write32(uint32_t addr, uint32_t value) {
     data_[addr + 1] = static_cast<uint8_t>((value >> 8u) & 0xFFu);
     data_[addr + 2] = static_cast<uint8_t>((value >> 16u) & 0xFFu);
     data_[addr + 3] = static_cast<uint8_t>((value >> 24u) & 0xFFu);
+    trace_note_mem_access("write", addr, value, 4u, "memory", false);
 }
 
 void Memory::tick_devices() {
@@ -119,4 +139,8 @@ bool Memory::has_pending_interrupt() const noexcept {
 
 std::optional<TrapCause> Memory::consume_pending_interrupt() {
     return bus_.consume_pending_interrupt();
+}
+
+TimerSnapshot Memory::timer_snapshot() const noexcept {
+    return timer_.snapshot();
 }

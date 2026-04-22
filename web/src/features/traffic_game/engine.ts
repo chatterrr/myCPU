@@ -51,7 +51,7 @@ function findBlueprint(
   const blueprint = blueprints.find((item) => item.id === blueprintId);
 
   if (!blueprint) {
-    throw new Error(`Missing dispatch blueprint: ${blueprintId}`);
+    throw new Error(`缺少调度蓝图：${blueprintId}`);
   }
 
   return blueprint;
@@ -315,7 +315,7 @@ function lockActivePiece(
   const scoreGain = 120 + lineResult.clearedLineCount * 220;
   const nextEventLabel =
     lineResult.clearedLineCount > 0
-      ? `清掉 ${lineResult.clearedLineCount} 行`
+      ? `消掉 ${lineResult.clearedLineCount} 行`
       : "锁定入栈";
 
   return spawnNextPiece(
@@ -596,5 +596,8 @@ export function reduceDispatchSession(
         blueprints
       );
     }
+
+    default:
+      return session;
   }
 }

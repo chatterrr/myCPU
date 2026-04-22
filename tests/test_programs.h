@@ -1,4 +1,5 @@
 #pragma once
+#include "config/constants.h"
 #include <cstdint>
 #include <vector>
 
@@ -85,6 +86,11 @@ namespace tests {
     constexpr uint32_t kSyscallRaw = ENC_3R(OP_SYSCALL, 0, 0, 0);
     constexpr uint32_t kErtnRaw = 0x06483800u;
     constexpr uint32_t kHaltRaw = kSimulatorHaltRaw;
+
+    inline const std::vector<uint32_t> kCounterTrapHandlerWords = {
+        ENC_2RI12(OP_ADDI_W, 30, 30, 1),
+        kErtnRaw,
+    };
 
     // ---------- expected step counts ----------
     inline constexpr uint64_t kArithProgramSteps = 4;
@@ -297,6 +303,30 @@ namespace tests {
 
         ENC_2RI12(OP_ADDI_W, 16, 0, '!'),
         ENC_2RI12(OP_ST_W,   16, 15, 0),
+        kHaltRaw,
+    };
+
+    inline const std::vector<uint32_t> kBreakResumeProgramWords = {
+        kBreakRaw,
+        ENC_2RI12(OP_ADDI_W, 9, 0, 7),
+        kHaltRaw,
+    };
+
+    inline const std::vector<uint32_t> kTimerInterruptProgramWords = {
+        ENC_1RI20(OP_LU12I_W, 10, 0x1FE00),
+        ENC_2RI12(OP_ADDI_W,  10, 10, 0x200),
+        ENC_2RI12(OP_ADDI_W,  11, 0, 2),
+        ENC_2RI12(OP_ST_W,    11, 10, 4),
+        ENC_2RI12(
+            OP_ADDI_W,
+            11,
+            0,
+            static_cast<int32_t>(
+                config::TIMER_CTRL_ENABLE_BIT
+                | config::TIMER_CTRL_INTERRUPT_ENABLE_BIT)),
+        ENC_2RI12(OP_ST_W,    11, 10, 0),
+        ENC_2RI12(OP_ADDI_W,  12, 0, 1),
+        ENC_2RI12(OP_ADDI_W,  13, 0, 2),
         kHaltRaw,
     };
 

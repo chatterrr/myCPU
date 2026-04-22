@@ -112,7 +112,7 @@ function renderStatusCard(snapshot: DispatchPieceSnapshot | null) {
   if (!snapshot) {
     return (
       <div className="rounded-[24px] border border-white/12 bg-black/26 p-5 text-sm leading-6 text-slate-300">
-        点一个块看详情。
+        点一个方块看详情。
       </div>
     );
   }
@@ -124,14 +124,12 @@ function renderStatusCard(snapshot: DispatchPieceSnapshot | null) {
       <div className={`rounded-[24px] border p-5 ${accent.hero}`}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-slate-300">
-              指令块
-            </p>
+            <p className="text-xs tracking-[0.22em] text-slate-300">指令方块</p>
             <p className="mt-2 text-3xl font-semibold text-slate-50">
               {snapshot.piece.instruction.op}
             </p>
             <p className="mt-2 text-sm text-slate-100">
-              {snapshot.blueprint.title} · {getDispatchStatusText(snapshot)}
+              {snapshot.blueprint.title} / {getDispatchStatusText(snapshot)}
             </p>
           </div>
           <span className={`rounded-full border px-3 py-1.5 text-xs ${accent.pill}`}>
@@ -148,7 +146,7 @@ function renderStatusCard(snapshot: DispatchPieceSnapshot | null) {
           </p>
         </div>
         <div className="rounded-[22px] border border-white/12 bg-black/28 p-4">
-          <p className="text-xs text-slate-400">原始码</p>
+          <p className="text-xs text-slate-400">原始编码</p>
           <p className="mt-2 text-base font-semibold text-slate-50">
             {snapshot.piece.instruction.raw}
           </p>
@@ -192,9 +190,7 @@ function renderStatusCard(snapshot: DispatchPieceSnapshot | null) {
       </div>
 
       <div className={`rounded-[24px] border p-5 ${accent.hero}`}>
-        <p className="text-xs uppercase tracking-[0.24em] text-slate-300">
-          当前提示
-        </p>
+        <p className="text-xs tracking-[0.22em] text-slate-300">当前提示</p>
         <p className="mt-3 text-sm leading-7 text-slate-100">
           {snapshot.hazardText}
         </p>
@@ -225,7 +221,7 @@ export function TrafficControlRoute() {
             const option = sampleOptionById.get(sampleId);
 
             if (!option) {
-              throw new Error(`缺少示例 trace: ${sampleId}`);
+              throw new Error(`缺少样例 trace: ${sampleId}`);
             }
 
             return [sampleId, await loadTraceFromSample(option)] as const;
@@ -386,10 +382,10 @@ export function TrafficControlRoute() {
     ? getRegisterActivities(activeSnapshot.currentStep)
     : [];
   const registerActivityMap = registerActivities.reduce<Record<number, RegisterActivity[]>>(
-    (accumulator, activity) => ({
-      ...accumulator,
-      [activity.reg]: [...(accumulator[activity.reg] ?? []), activity]
-    }),
+    (accumulator, activity) => {
+      (accumulator[activity.reg] ??= []).push(activity);
+      return accumulator;
+    },
     {}
   );
 
@@ -406,9 +402,9 @@ export function TrafficControlRoute() {
             <div className="space-y-2">
               <Link
                 to="/"
-                className="inline-flex items-center rounded-full border border-cyan-300/24 bg-cyan-300/10 px-4 py-2 text-xs uppercase tracking-[0.28em] text-cyan-50 transition hover:border-cyan-200/44 hover:bg-cyan-300/16"
+                className="inline-flex items-center rounded-full border border-cyan-300/24 bg-cyan-300/10 px-4 py-2 text-xs tracking-[0.24em] text-cyan-50 transition hover:border-cyan-200/44 hover:bg-cyan-300/16"
               >
-                返回首页
+                返回工作台
               </Link>
               <div>
                 <h1 className="text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
@@ -419,33 +415,25 @@ export function TrafficControlRoute() {
 
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="rounded-[24px] border border-cyan-300/24 bg-cyan-300/10 p-4 shadow-[0_0_26px_rgba(34,211,238,0.08)]">
-                <p className="text-xs uppercase tracking-[0.24em] text-cyan-100/70">
-                  当前块
-                </p>
+                <p className="text-xs tracking-[0.2em] text-cyan-100/70">当前方块</p>
                 <p className="mt-2 text-lg font-semibold text-slate-50">
                   {activeSnapshot?.blueprint.title ?? "等待入场"}
                 </p>
               </div>
               <div className="rounded-[24px] border border-emerald-300/24 bg-emerald-300/10 p-4 shadow-[0_0_26px_rgba(16,185,129,0.08)]">
-                <p className="text-xs uppercase tracking-[0.24em] text-emerald-100/70">
-                  当前阶段
-                </p>
+                <p className="text-xs tracking-[0.2em] text-emerald-100/70">当前阶段</p>
                 <p className="mt-2 text-lg font-semibold text-slate-50">
                   {renderSnapshotStage(activeSnapshot)}
                 </p>
               </div>
               <div className="rounded-[24px] border border-rose-300/24 bg-rose-300/10 p-4 shadow-[0_0_26px_rgba(251,113,133,0.08)]">
-                <p className="text-xs uppercase tracking-[0.24em] text-rose-100/70">
-                  锁定
-                </p>
+                <p className="text-xs tracking-[0.2em] text-rose-100/70">已锁定</p>
                 <p className="mt-2 text-lg font-semibold text-slate-50">
                   {session?.lockedCount ?? 0}
                 </p>
               </div>
               <div className="rounded-[24px] border border-amber-300/24 bg-amber-300/10 p-4 shadow-[0_0_26px_rgba(251,191,36,0.08)]">
-                <p className="text-xs uppercase tracking-[0.24em] text-amber-100/70">
-                  清行
-                </p>
+                <p className="text-xs tracking-[0.2em] text-amber-100/70">已消行</p>
                 <p className="mt-2 text-lg font-semibold text-slate-50">
                   {session?.lines ?? 0}
                 </p>
@@ -469,16 +457,14 @@ export function TrafficControlRoute() {
               snapshotLabel="主舞台联动"
               badgeLabel={activeSnapshot.blueprint.cue}
               pulseTone={activeSnapshot.blueprint.tone}
-              hazardLabel={`${activeSnapshot.blueprint.title} · 第 ${activeSnapshot.currentStep.pipeline?.cycle ?? "-"} 拍`}
+              hazardLabel={`${activeSnapshot.blueprint.title} / 第 ${activeSnapshot.currentStep.pipeline?.cycle ?? "-"} 拍`}
               showRegisters={false}
             />
           ) : (
             <div className="rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(251,113,133,0.12),transparent_26%),linear-gradient(180deg,rgba(1,4,12,0.98),rgba(2,6,23,0.92))] p-6 shadow-[0_36px_110px_rgba(2,6,23,0.52)]">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                主舞台联动
-              </p>
+              <p className="text-xs tracking-[0.24em] text-slate-400">主舞台联动</p>
               <div className="mt-5 rounded-[24px] border border-white/12 bg-black/28 p-5 text-sm text-slate-300">
-                等待当前块进场。
+                等待当前方块进场。
               </div>
             </div>
           )}
@@ -494,7 +480,7 @@ export function TrafficControlRoute() {
             <div className="h-full w-full max-w-[500px]">
               {isLoading ? (
                 <div className="rounded-[32px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(2,6,23,0.96),rgba(2,6,23,0.86))] p-10 text-center text-sm text-slate-200">
-                  正在载入方块……
+                  正在载入方块样例...
                 </div>
               ) : error || blueprintError ? (
                 <div className="rounded-[32px] border border-rose-400/24 bg-rose-400/10 p-10 text-center text-sm text-rose-100">
@@ -509,7 +495,7 @@ export function TrafficControlRoute() {
                 />
               ) : (
                 <div className="rounded-[32px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(2,6,23,0.96),rgba(2,6,23,0.86))] p-10 text-center text-sm text-slate-200">
-                  正在准备开局……
+                  正在准备开局...
                 </div>
               )}
             </div>
@@ -536,79 +522,77 @@ export function TrafficControlRoute() {
                 className="flex h-full min-h-0 flex-col border-emerald-300/22 shadow-[0_28px_90px_rgba(16,185,129,0.08)]"
               >
                 <div className="flex h-full flex-1 flex-col">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => dispatchAction({ type: "togglePause" })}
-                    className="min-h-[78px] rounded-[22px] border border-cyan-300/40 bg-cyan-300/14 px-4 py-4 text-base font-semibold text-cyan-50 transition hover:border-cyan-200/55 hover:bg-cyan-300/20"
-                  >
-                    {session?.paused ? "继续" : "暂停"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSoftDropping(false);
-                      dispatchAction({ type: "restart" });
-                    }}
-                    className="min-h-[78px] rounded-[22px] border border-white/14 bg-black/28 px-4 py-4 text-base font-semibold text-slate-100 transition hover:border-white/26 hover:bg-white/10"
-                  >
-                    重新开局
-                  </button>
-                </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => dispatchAction({ type: "togglePause" })}
+                      className="min-h-[78px] rounded-[22px] border border-cyan-300/40 bg-cyan-300/14 px-4 py-4 text-base font-semibold text-cyan-50 transition hover:border-cyan-200/55 hover:bg-cyan-300/20"
+                    >
+                      {session?.paused ? "继续" : "暂停"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSoftDropping(false);
+                        dispatchAction({ type: "restart" });
+                      }}
+                      className="min-h-[78px] rounded-[22px] border border-white/14 bg-black/28 px-4 py-4 text-base font-semibold text-slate-100 transition hover:border-white/26 hover:bg-white/10"
+                    >
+                      重新开局
+                    </button>
+                  </div>
 
-                <div className="mt-4 grid flex-1 auto-rows-fr gap-4 sm:grid-cols-2">
-                  <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-cyan-300/18 bg-black/28 p-5">
-                    <p className="text-xs text-slate-400">节拍</p>
-                    <p className="mt-3 text-3xl font-semibold text-slate-50">
-                      {activeSnapshot?.currentStep.pipeline?.cycle ?? "-"}
-                    </p>
-                  </div>
-                  <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-emerald-300/18 bg-black/28 p-5">
-                    <p className="text-xs text-slate-400">下一块</p>
-                    <p className="mt-3 text-xl font-semibold leading-8 text-slate-50">
-                      {nextBlueprint?.title ?? "队列补充中"}
-                    </p>
-                  </div>
-                  <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-amber-300/18 bg-black/28 p-5">
-                    <p className="text-xs text-slate-400">动作</p>
-                    <p className="mt-3 text-base leading-7 text-slate-100">
-                      {session?.lastActionLabel ?? "准备开局"}
-                    </p>
-                  </div>
-                  <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-rose-300/18 bg-black/28 p-5">
-                    <p className="text-xs text-slate-400">反馈</p>
-                    <p className="mt-3 text-base leading-7 text-slate-100">
-                      {session?.lastEventLabel ?? "等待开局"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex min-h-[164px] flex-col justify-between rounded-[22px] border border-white/12 bg-black/28 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        队列前端
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold text-slate-50">
-                        {nextBlueprint?.title ?? "等待补充"}
-                      </p>
-                      <p className="mt-3 text-base leading-7 text-slate-300">
-                        {nextBlueprint?.description ?? "下一块生成后会显示在这里。"}
+                  <div className="mt-4 grid flex-1 auto-rows-fr gap-4 sm:grid-cols-2">
+                    <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-cyan-300/18 bg-black/28 p-5">
+                      <p className="text-xs text-slate-400">节拍</p>
+                      <p className="mt-3 text-3xl font-semibold text-slate-50">
+                        {activeSnapshot?.currentStep.pipeline?.cycle ?? "-"}
                       </p>
                     </div>
-                    {nextBlueprint ? (
-                      <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-xs text-slate-100">
-                        {getDispatchBoardLegend(nextBlueprint.kind)}
-                      </span>
-                    ) : null}
+                    <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-emerald-300/18 bg-black/28 p-5">
+                      <p className="text-xs text-slate-400">下一个</p>
+                      <p className="mt-3 text-xl font-semibold leading-8 text-slate-50">
+                        {nextBlueprint?.title ?? "队列补充中"}
+                      </p>
+                    </div>
+                    <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-amber-300/18 bg-black/28 p-5">
+                      <p className="text-xs text-slate-400">动作</p>
+                      <p className="mt-3 text-base leading-7 text-slate-100">
+                        {session?.lastActionLabel ?? "准备开局"}
+                      </p>
+                    </div>
+                    <div className="flex min-h-[126px] flex-col justify-between rounded-[20px] border border-rose-300/18 bg-black/28 p-5">
+                      <p className="text-xs text-slate-400">反馈</p>
+                      <p className="mt-3 text-base leading-7 text-slate-100">
+                        {session?.lastEventLabel ?? "等待开局"}
+                      </p>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="mt-4 flex min-h-[164px] flex-col justify-between rounded-[22px] border border-white/12 bg-black/28 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs tracking-[0.2em] text-slate-400">队列前端</p>
+                        <p className="mt-3 text-2xl font-semibold text-slate-50">
+                          {nextBlueprint?.title ?? "等待补充"}
+                        </p>
+                        <p className="mt-3 text-base leading-7 text-slate-300">
+                          {nextBlueprint?.description ?? "下一块生成后会显示在这里。"}
+                        </p>
+                      </div>
+                      {nextBlueprint ? (
+                        <span className="rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-xs text-slate-100">
+                          {getDispatchBoardLegend(nextBlueprint.kind)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               </Panel>
             </div>
 
             <Panel
-              title="寄存器"
+              title="寄存器看板"
               className="flex-1 border-lime-300/22 shadow-[0_28px_90px_rgba(132,204,22,0.08)]"
             >
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
@@ -629,7 +613,7 @@ export function TrafficControlRoute() {
                       className={`rounded-[18px] border p-3 transition-colors ${registerCardClasses[dominantKind]}`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                        <span className="text-xs font-semibold tracking-[0.14em]">
                           r{reg}
                         </span>
                         <span

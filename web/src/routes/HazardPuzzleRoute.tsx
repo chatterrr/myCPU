@@ -67,7 +67,7 @@ export function HazardPuzzleRoute() {
             const option = sampleOptionById.get(sampleId);
 
             if (!option) {
-              throw new Error(`缺少示例 trace: ${sampleId}`);
+              throw new Error(`缺少样例 trace: ${sampleId}`);
             }
 
             return [sampleId, await loadTraceFromSample(option)] as const;
@@ -179,39 +179,33 @@ export function HazardPuzzleRoute() {
             <div className="space-y-3">
               <Link
                 to="/"
-                className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-slate-300 transition hover:border-cyan-300/35 hover:text-slate-50"
+                className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs tracking-[0.24em] text-slate-300 transition hover:border-cyan-300/35 hover:text-slate-50"
               >
-                返回首页
+                返回工作台
               </Link>
 
               <div>
                 <h1 className="text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
-                  Hazard 判断
+                  冒险判断练习
                 </h1>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  当前关
-                </p>
+                <p className="text-xs tracking-[0.22em] text-slate-400">当前关卡</p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {activeLevel.shortTitle}
                 </p>
               </div>
               <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  当前焦点
-                </p>
+                <p className="text-xs tracking-[0.22em] text-slate-400">焦点阶段</p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {activeLevel.focusStage.toUpperCase()}
                 </p>
               </div>
               <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.26em] text-slate-400">
-                  完成进度
-                </p>
+                <p className="text-xs tracking-[0.22em] text-slate-400">完成进度</p>
                 <p className="mt-3 text-xl font-semibold text-slate-50">
                   {solvedCount}/{hazardPuzzleLevels.length}
                 </p>
@@ -226,10 +220,10 @@ export function HazardPuzzleRoute() {
           transition={{ duration: 0.35, delay: 0.1 }}
           className="space-y-6"
         >
-          <Panel title={activeLevel.title}>
+          <Panel title={activeLevel.title} description={activeLevel.briefing}>
             {isLoading ? (
               <div className="rounded-[28px] border border-white/10 bg-white/5 p-10 text-center text-sm text-slate-300">
-                正在载入关卡画面……
+                正在载入关卡画面...
               </div>
             ) : error ? (
               <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 p-10 text-center text-sm text-rose-100">
@@ -251,7 +245,7 @@ export function HazardPuzzleRoute() {
                         ? "rose"
                         : "amber"
                   }
-                  hazardLabel={`${activeLevel.concept} · ${activeLevel.focusStage.toUpperCase()}`}
+                  hazardLabel={`${activeLevel.concept} / ${activeLevel.focusStage.toUpperCase()}`}
                 />
 
                 <div className="grid gap-4 lg:grid-cols-[auto,1fr,auto,auto] lg:items-center">
@@ -280,7 +274,7 @@ export function HazardPuzzleRoute() {
                     className="w-full accent-cyan-400"
                   />
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
-                    Cycle {activeStep.pipeline?.cycle ?? "-"}
+                    周期 {activeStep.pipeline?.cycle ?? "-"}
                   </span>
                   <button
                     type="button"
@@ -333,7 +327,7 @@ export function HazardPuzzleRoute() {
                               {level.briefing}
                             </p>
                           </div>
-                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-slate-200">
+                          <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1.5 text-[10px] tracking-[0.18em] text-slate-200">
                             {level.focusStage.toUpperCase()}
                           </span>
                         </div>
@@ -360,107 +354,99 @@ export function HazardPuzzleRoute() {
 
             <div className="flex h-full flex-col gap-6">
               <Panel title="你的判断" description={activeLevel.prompt}>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {activeLevel.choices.map((choice, index) => (
-                      <button
-                        key={choice.id}
-                        type="button"
-                        onClick={() => chooseAnswer(choice.id)}
-                        className={`rounded-[24px] border px-4 py-4 text-left transition ${getChoiceClasses(choice.id)}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-black/16 text-sm font-semibold">
-                            {choiceLetters[index] ?? `${index + 1}`}
-                          </span>
-                          <span className="text-xl font-semibold">{choice.label}</span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 opacity-90">{choice.detail}</p>
-                      </button>
-                    ))}
-                  </div>
-
-                  {feedback ? (
-                    <div
-                      className={`mt-5 rounded-[24px] border p-4 ${
-                        feedback.status === "correct"
-                          ? "border-emerald-300/30 bg-emerald-300/12 text-emerald-50"
-                          : "border-rose-300/30 bg-rose-300/12 text-rose-50"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold tracking-[0.08em]">
-                        {feedback.status === "correct" ? "正确" : "错误"}
-                      </p>
-                      <p className="mt-3 text-sm leading-6">{feedback.explanation}</p>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-5 flex flex-wrap gap-3">
+                <div className="grid gap-3 md:grid-cols-3">
+                  {activeLevel.choices.map((choice, index) => (
                     <button
+                      key={choice.id}
                       type="button"
-                      onClick={() => setSelectedChoiceId(null)}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                      onClick={() => chooseAnswer(choice.id)}
+                      className={`rounded-[24px] border px-4 py-4 text-left transition ${getChoiceClasses(choice.id)}`}
                     >
-                      清除判断
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-black/16 text-sm font-semibold">
+                          {choiceLetters[index] ?? `${index + 1}`}
+                        </span>
+                        <span className="text-xl font-semibold">{choice.label}</span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 opacity-90">{choice.detail}</p>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        goToLevel((activeLevelIndex + 1) % hazardPuzzleLevels.length)
-                      }
-                      className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm font-medium text-cyan-50 transition hover:border-cyan-300/40 hover:bg-cyan-300/15"
-                    >
-                      下一关
-                    </button>
+                  ))}
+                </div>
+
+                {feedback ? (
+                  <div
+                    className={`mt-5 rounded-[24px] border p-4 ${
+                      feedback.status === "correct"
+                        ? "border-emerald-300/30 bg-emerald-300/12 text-emerald-50"
+                        : "border-rose-300/30 bg-rose-300/12 text-rose-50"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold tracking-[0.08em]">
+                      {feedback.status === "correct" ? "判断正确" : "判断有误"}
+                    </p>
+                    <p className="mt-3 text-sm leading-6">{feedback.explanation}</p>
                   </div>
+                ) : null}
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChoiceId(null)}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                  >
+                    清空选择
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToLevel((activeLevelIndex + 1) % hazardPuzzleLevels.length)
+                    }
+                    className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm font-medium text-cyan-50 transition hover:border-cyan-300/40 hover:bg-cyan-300/15"
+                  >
+                    下一关
+                  </button>
+                </div>
               </Panel>
 
               <Panel title="当前线索">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        程序
-                      </p>
-                      <p className="mt-2 text-base font-semibold text-slate-50">
-                        {activeTrace?.meta?.program ?? activeLevel.traceSampleId}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        焦点阶段
-                      </p>
-                      <p className="mt-2 text-base font-semibold text-slate-50">
-                        {activeLevel.focusStage.toUpperCase()}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        风险类型
-                      </p>
-                      <p className="mt-2 text-base font-semibold text-slate-50">
-                        {activeLevel.concept}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                        当前指令
-                      </p>
-                      <p className="mt-2 text-base font-semibold text-slate-50">
-                        {activeStep?.op ?? "-"}
-                      </p>
-                    </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs tracking-[0.2em] text-slate-400">程序</p>
+                    <p className="mt-2 text-base font-semibold text-slate-50">
+                      {activeTrace?.meta?.program ?? activeLevel.traceSampleId}
+                    </p>
                   </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs tracking-[0.2em] text-slate-400">焦点阶段</p>
+                    <p className="mt-2 text-base font-semibold text-slate-50">
+                      {activeLevel.focusStage.toUpperCase()}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs tracking-[0.2em] text-slate-400">风险类型</p>
+                    <p className="mt-2 text-base font-semibold text-slate-50">
+                      {activeLevel.concept}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs tracking-[0.2em] text-slate-400">当前指令</p>
+                    <p className="mt-2 text-base font-semibold text-slate-50">
+                      {activeStep?.op ?? "-"}
+                    </p>
+                  </div>
+                </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
-                      黄：停顿 / bubble
-                    </span>
-                    <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50">
-                      青：旁路
-                    </span>
-                    <span className="rounded-full border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-sm text-rose-50">
-                      红：冲刷
-                    </span>
-                  </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
+                    黄：停顿 / bubble
+                  </span>
+                  <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50">
+                    青：旁路
+                  </span>
+                  <span className="rounded-full border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-sm text-rose-50">
+                    红：冲刷
+                  </span>
+                </div>
               </Panel>
             </div>
           </div>
