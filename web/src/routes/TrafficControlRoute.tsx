@@ -460,7 +460,7 @@ export function TrafficControlRoute() {
               previousStep={activeSnapshot.previousStep}
               stageHighlights={activeSnapshot.stageHighlights}
               flowHints={activeSnapshot.flowHints}
-              snapshotLabel="主舞台联动"
+              snapshotLabel="Stage"
               badgeLabel={activeSnapshot.blueprint.cue}
               pulseTone={activeSnapshot.blueprint.tone}
               hazardLabel={`${activeSnapshot.blueprint.title} / 第 ${activeSnapshot.currentStep.pipeline?.cycle ?? "-"} 拍`}
@@ -468,7 +468,7 @@ export function TrafficControlRoute() {
             />
           ) : (
             <div className="rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(251,113,133,0.12),transparent_26%),linear-gradient(180deg,rgba(1,4,12,0.98),rgba(2,6,23,0.92))] p-6 shadow-[0_36px_110px_rgba(2,6,23,0.52)]">
-              <p className="text-xs tracking-[0.24em] text-slate-400">主舞台联动</p>
+              <p className="text-xs tracking-[0.24em] text-slate-400">Stage</p>
               <div className="mt-5 rounded-[24px] border border-white/12 bg-black/28 p-5 text-sm text-slate-300">
                 等待当前方块进场。
               </div>
@@ -516,7 +516,7 @@ export function TrafficControlRoute() {
             <div className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <Panel
                 title="状态卡"
-                description="显示选中方块对应的指令、阶段、风险类型与当前提示。"
+                description="选中方块对应的指令、阶段、风险类型与当前提示。"
                 className="flex h-full min-h-0 flex-col border-amber-300/22 shadow-[0_28px_90px_rgba(251,191,36,0.08)]"
               >
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -526,7 +526,7 @@ export function TrafficControlRoute() {
 
               <Panel
                 title="调度信息"
-                description="显示节拍、下一方块、最近动作和系统反馈，并提供暂停与重开控制。"
+                description="节拍、下一方块、最近动作和系统反馈，并提供暂停与重开控制。"
                 className="flex h-full min-h-0 flex-col border-emerald-300/22 shadow-[0_28px_90px_rgba(16,185,129,0.08)]"
               >
                 <div className="flex h-full flex-1 flex-col">

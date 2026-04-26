@@ -176,7 +176,7 @@ export function HazardPuzzleRoute() {
           <PortalHero
             sectionLabel="LoongArch 流水线教学"
             title="Hazard 教学互动"
-            description="页面将流水线风险判断组织为分步练习，用于对照运行现场识别 RAW、旁路、load-use 与分支冲刷。"
+            description="将流水线风险判断组织为分步练习，用于对照运行现场识别 RAW、旁路、load-use 与分支冲刷。"
             tags={[
               { label: "互动教学", tone: "amber" },
               { label: "共享样例", tone: "cyan" },

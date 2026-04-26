@@ -139,21 +139,21 @@ const homeSurfaceMeta: Record<
 > = {
   execution: {
     label: "执行过程",
-    detail: "适合查看当前指令、寄存器写回、异常过程和程序结束结果。",
+    detail: "查看当前指令、寄存器写回、异常过程和程序结束结果。",
     panelTitle: "执行过程",
     panelDescription: "围绕当前样例展示当前指令、寄存器变化、异常状态与运行结果。",
     tone: "amber"
   },
   pipeline: {
     label: "流水线现场",
-    detail: "适合查看 IF / ID / EX / MEM / WB 的阶段变化、停顿、旁路和冲刷。",
+    detail: "查看 IF / ID / EX / MEM / WB 的阶段变化、停顿、旁路和冲刷。",
     panelTitle: "流水线现场",
     panelDescription: "围绕当前样例展示五级流水线快照、阶段状态与控制信号。",
     tone: "cyan"
   },
   device: {
     label: "外设、总线与存储访问",
-    detail: "适合查看 UART、Timer、设备事件、总线访问与纯内存访问。",
+    detail: "查看 UART、Timer、设备事件、总线访问与纯内存访问。",
     panelTitle: "外设、总线与存储访问",
     panelDescription: "围绕当前样例分开展示 UART、Timer、设备事件、总线访问与纯内存访问。",
     tone: "emerald"
@@ -995,9 +995,9 @@ export function HomeRoute() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.12),_transparent_20%),radial-gradient(circle_at_bottom_right,_rgba(251,191,36,0.12),_transparent_24%),linear-gradient(180deg,_#04111f_0%,_#030712_45%,_#02050f_100%)]">
       <div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <PortalHero
-          sectionLabel="LoongArch 流水线教学"
+          sectionLabel="LoongArch 流水线"
           title="LoongArch 程序执行可视化工作台"
-          description="页面按样例组织入口。选择样例后，下方只展开与其对应的主版面，用于围绕同一段运行记录开展教学分析。"
+          description="选择样例后，下方展开主版面，围绕运行记录分析。"
           actions={[
             { label: "Hazard 互动", to: "/hazard-puzzle", emphasis: "secondary" },
             { label: "方块调度", to: "/traffic-control", emphasis: "secondary" }
