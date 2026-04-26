@@ -1006,7 +1006,6 @@ export function HomeRoute() {
 
         <Panel
           title="样例选择"
-          description="样例按照观察重点归类。选择样例后，下方只展开与其对应的主版面，其余版面默认收起。"
         >
           <div className="grid gap-5 xl:grid-cols-[0.95fr,1.05fr]">
             <div className="grid gap-4">
