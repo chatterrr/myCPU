@@ -216,6 +216,9 @@ __pycache__/
 .env
 .env.*
 *.local
+AGENTS.md
+docs/
+tools/
 
 # -----------------------------
 # Generated documentation / graphs (optional)
