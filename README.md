@@ -5,21 +5,20 @@
 - C++ 模拟器：负责加载程序、执行 CPU、驱动内存与设备，并导出 trace。
 - Web 教学前端：负责把 trace 组织成统一中文教学门户，用于展示执行过程、流水线现场、异常中断过程和设备行为。
 
-## 仓库结构
+## 项目结构
 
-当前主干的目录可以分为“源码目录”和“生成目录”两类。
+以下只列出项目本体的核心代码目录与执行过程中生成的主要目录，不包含本地说明、调试辅助或协作指导文件。
 
 ### 源码目录
 
 ```text
+CMakeLists.txt  CMake 构建入口
 config/    运行配置与常量
 cpu/       CPU、译码、执行、流水线相关实现
 device/    UART、Timer 等设备模型
-docs/      里程碑说明与补充文档
 loader/    二进制加载逻辑
 memory/    内存模型
 tests/     自动化测试与内置样例程序
-tools/     辅助脚本和工具
 utils/     调试与公共工具
 web/       React + TypeScript Web 教学前端
 main.cpp   命令行入口
@@ -228,6 +227,5 @@ Web 前端当前保留三条主路径：
 - 内置样例程序定义位于 `tests/test_programs.h`
 - CLI 入口定义位于 `main.cpp`
 - Web 端样例同步脚本位于 `web/scripts/sync-samples.ps1`
-- 里程碑补充文档位于 `docs/`
 
 如果命令行执行因步数上限提前结束，程序会以退出码 `2` 退出；若内置样例正常运行到模拟器 `HALT`，则可以在不显式设置 `--max-steps` 的情况下自然停止。
