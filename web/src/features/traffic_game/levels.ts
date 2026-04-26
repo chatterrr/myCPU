@@ -346,11 +346,3 @@ export function getNextBlueprint(
 
   return blueprints.find((blueprint) => blueprint.id === nextId) ?? null;
 }
-
-export function getSnapshotStageText(snapshot: DispatchPieceSnapshot | null) {
-  if (!snapshot?.activeStage) {
-    return "等待入场";
-  }
-
-  return snapshot.activeStage.toUpperCase();
-}
