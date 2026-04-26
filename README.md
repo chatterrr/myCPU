@@ -1,86 +1,118 @@
-# myCPU LoongArch 教学流水线实验台
+# myCPU LoongArch 教学模拟器
 
-一个 LoongArch ISA 模拟与流水线可视化项目。
+本项目是一个面向课程设计与教学演示的 LoongArch ISA 模拟器。仓库同时包含两部分：
 
-当前仓库包含两部分：
+- C++ 模拟器：负责加载程序、执行 CPU、驱动内存与设备，并导出 trace。
+- Web 教学前端：负责把 trace 组织成统一中文教学门户，用于展示执行过程、流水线现场、异常中断过程和设备行为。
 
-- C++ 模拟器：负责装载程序、运行 CPU、导出执行 trace。
-- Web 教学前端：负责把 trace 渲染成可交互的流水线教学页面与轻游戏页面。
+## 仓库结构
 
----
+当前主干的目录可以分为“源码目录”和“生成目录”两类。
 
-## 1. 当前包含内容
+### 源码目录
 
-### 1.1 C++ 模拟器
+```text
+config/    运行配置与常量
+cpu/       CPU、译码、执行、流水线相关实现
+device/    UART、Timer 等设备模型
+docs/      里程碑说明与补充文档
+loader/    二进制加载逻辑
+memory/    内存模型
+tests/     自动化测试与内置样例程序
+tools/     辅助脚本和工具
+utils/     调试与公共工具
+web/       React + TypeScript Web 教学前端
+main.cpp   命令行入口
+```
 
-- 基于 `C++17 + CMake + Visual Studio`
-- 支持加载原始二进制文件
-- 支持运行内置测试程序
-- 支持寄存器打印
-- 支持导出 JSONL trace
-- 支持教学用途的最小 5 级流水线模式：`--pipeline`
+### 生成目录
 
-当前命令行程序入口：
+```text
+build/             CMake 构建产物
+web/node_modules/  Web 依赖安装目录
+web/dist/          Web 生产构建产物
+```
 
-- `mycpu.exe`
+其中，`build/`、`web/node_modules/` 和 `web/dist/` 都属于执行过程中的生成内容，不是核心源码的一部分。
 
-核心目录：
+## 环境要求
 
-- `cpu/`：CPU、译码、执行
-- `memory/`：内存实现
-- `loader/`：程序装载
-- `device/`：UART 等设备
-- `tests/`：内置程序与自动化测试
+- Windows
+- PowerShell
+- Visual Studio 18 2026
+- CMake 3.16 或更高版本
+- Node.js 18 或更高版本
 
-### 1.2 Web 教学前端
+## C++ 构建与测试
 
-- 基于 `React 18 + TypeScript + Vite`
-- 使用 `motion` 做关键动画
-- 使用 `Pixi.js` / 现有画布组件做教学舞台表达
-- 消费 C++ 侧导出的 trace JSONL
+在仓库根目录执行：
 
-当前 Web 路由：
+```powershell
+cmake -S . -B .\build -G "Visual Studio 18 2026" -A x64
+cmake --build .\build --config Release
+ctest -C Release --output-on-failure --test-dir .\build
+```
 
-- `/`：首页总览
-- `/hazard-puzzle`：入口 1，`Hazard 判断`
-- `/traffic-control`：入口 2，`流水线方块调度`
+当前自动化测试包括：
 
-### 1.3 当前教学玩法
+- `member_b_tests`
+- `cpu_integration_tests`
 
-#### 入口 1：Hazard 判断
+## 命令行运行方式
 
-- 先看主画幅中的关键流水线时刻
-- 点击左侧关卡地图切换场景
-- 对当前 hazard 做 A / B / C 判断
-- 反馈“正确 / 错误”
-- 用于讲解：
-  - RAW 依赖
-  - forwarding
-  - stall / bubble
-  - flush
+可执行文件路径：
 
-#### 入口 2：流水线方块调度
+```text
+.\build\Release\mycpu.exe
+```
 
-- 一个 falling-block 风格的轻游戏页面
-- 玩家可用键盘操作下落方块
-- 页面同时显示实时流水线联动画面
-- 点击方块可查看对应指令状态卡
-- 寄存器读 / 目标 / 写回会发光或变色提示
+帮助命令：
 
-支持操作：
+```powershell
+.\build\Release\mycpu.exe --help
+```
 
-- `← / A`：左移
-- `→ / D`：右移
-- `↑ / W`：旋转
-- `↓ / S`：加速下落
-- `Space`：硬降
-- `P`：暂停 / 继续
+命令行支持以下两类输入：
 
----
+- 外部二进制：`--bin <path>`
+- 内置样例：`--use-program <name>`
 
-## 2. 当前可运行的内置程序
+常用选项如下：
 
-命令行支持以下内置程序名：
+- `--pipeline`：启用教学用五级流水线模式
+- `--base <addr>`：设置加载地址
+- `--entry <addr>`：设置入口地址
+- `--max-steps <N>`：设置最大执行步数
+- `--dump-regs`：执行后打印寄存器
+- `--trace <path>`：导出 JSONL trace
+
+### 运行内置样例
+
+```powershell
+.\build\Release\mycpu.exe --use-program smoke --dump-regs
+.\build\Release\mycpu.exe --use-program slt --dump-regs
+.\build\Release\mycpu.exe --use-program lu12i --dump-regs
+.\build\Release\mycpu.exe --use-program uart --dump-regs
+```
+
+### 运行外部二进制
+
+```powershell
+.\build\Release\mycpu.exe --bin .\program.bin --base 0x1000 --entry 0x1000 --max-steps 128 --dump-regs
+```
+
+### 导出流水线样例 trace
+
+```powershell
+.\build\Release\mycpu.exe --pipeline --use-program pipeline-raw --max-steps 64 --trace .\build\pipeline-raw.jsonl
+.\build\Release\mycpu.exe --pipeline --use-program pipeline-forward --max-steps 64 --trace .\build\pipeline-forward.jsonl
+.\build\Release\mycpu.exe --pipeline --use-program pipeline-loaduse --max-steps 64 --trace .\build\pipeline-loaduse.jsonl
+.\build\Release\mycpu.exe --pipeline --use-program pipeline-branch --max-steps 64 --trace .\build\pipeline-branch.jsonl
+```
+
+### 当前内置样例
+
+当前命令行帮助中列出的内置样例为：
 
 ```text
 smoke
@@ -92,6 +124,9 @@ r0
 slt
 lu12i
 uart
+invalid
+break-resume
+timer-interrupt
 pipeline-nohaz
 pipeline-raw
 pipeline-forward
@@ -99,127 +134,48 @@ pipeline-loaduse
 pipeline-branch
 ```
 
-其中当前项目特别要求保持稳定可用的程序包括：
+其中，课程阶段要求重点保持稳定可用的样例包括：
 
 - `smoke`
 - `slt`
 - `lu12i`
 - `uart`
 
-用于 Web 教学的典型 trace 程序包括：
+## Web 前端运行方式
 
-- `pipeline-raw`
-- `pipeline-forward`
-- `pipeline-loaduse`
-- `pipeline-branch`
+Web 工程位于 `web/`，使用 `React 18 + TypeScript + Vite`。
 
----
-
-## 3. 环境要求
-
-推荐环境：
-
-- Windows
-- PowerShell
-- Visual Studio 18 2026
-- CMake 3.16+
-- Node.js 18+（用于 Web）
-
----
-
-## 4. C++ 构建与测试
-
-在仓库根目录执行：
-
-```powershell
-cmake -S . -B .\build -G "Visual Studio 18 2026" -A x64
-cmake --build .\build --config Release
-ctest -C Release --output-on-failure --test-dir .\build
-```
-
-自动化测试包括：
-
-- `member_b_tests`
-- `cpu_integration_tests`
-
----
-
-## 5. 命令行运行示例
-
-### 5.1 查看帮助
-
-```powershell
-.\build\Release\mycpu.exe --help
-```
-
-### 5.2 运行内置程序
-
-```powershell
-.\build\Release\mycpu.exe --use-program smoke --max-steps 32 --dump-regs
-```
-
-### 5.3 运行指定内置程序
-
-```powershell
-.\build\Release\mycpu.exe --use-program slt --max-steps 32 --dump-regs
-.\build\Release\mycpu.exe --use-program lu12i --max-steps 32 --dump-regs
-.\build\Release\mycpu.exe --use-program uart --max-steps 64 --dump-regs
-```
-
-### 5.4 运行外部二进制
-
-```powershell
-.\build\Release\mycpu.exe --bin .\program.bin --base 0x1000 --entry 0x1000 --max-steps 128 --dump-regs
-```
-
-### 5.5 运行流水线模式并导出 trace
-
-```powershell
-.\build\Release\mycpu.exe --pipeline --use-program pipeline-raw --max-steps 64 --trace .\build\pipeline-raw.jsonl
-.\build\Release\mycpu.exe --pipeline --use-program pipeline-forward --max-steps 64 --trace .\build\pipeline-forward.jsonl
-.\build\Release\mycpu.exe --pipeline --use-program pipeline-loaduse --max-steps 64 --trace .\build\pipeline-loaduse.jsonl
-.\build\Release\mycpu.exe --pipeline --use-program pipeline-branch --max-steps 64 --trace .\build\pipeline-branch.jsonl
-```
-
----
-
-## 6. Web 前端启动
-
-先安装依赖：
+### 安装依赖
 
 ```powershell
 cd .\web
 npm.cmd ci
 ```
 
-开发模式启动：
+### 启动开发服务器
 
 ```powershell
 npm.cmd run dev -- --host 127.0.0.1 --port 4174
 ```
 
-然后打开：
+开发服务器启动后，可访问以下入口：
 
 - [http://127.0.0.1:4174/](http://127.0.0.1:4174/)
 - [http://127.0.0.1:4174/hazard-puzzle](http://127.0.0.1:4174/hazard-puzzle)
 - [http://127.0.0.1:4174/traffic-control](http://127.0.0.1:4174/traffic-control)
 
-生产构建：
+### 生产构建
 
 ```powershell
 npm.cmd run build
 npm.cmd run preview -- --host 127.0.0.1 --port 4175
 ```
 
----
+## Trace 到 Web 的使用流程
 
-## 7. Trace 到 Web 的工作流
+Web 端默认从 `web/public/traces/` 读取样例 trace。推荐流程如下：
 
-Web 前端默认从 `web/public/traces/` 读取样例 trace。
-
-推荐流程：
-
-### 7.1 在 C++ 侧生成 trace
+### 1. 在 C++ 侧生成 trace
 
 ```powershell
 .\build\Release\mycpu.exe --pipeline --use-program pipeline-raw --max-steps 64 --trace .\build\pipeline-raw.jsonl
@@ -228,58 +184,50 @@ Web 前端默认从 `web/public/traces/` 读取样例 trace。
 .\build\Release\mycpu.exe --pipeline --use-program pipeline-branch --max-steps 64 --trace .\build\pipeline-branch.jsonl
 ```
 
-### 7.2 同步到 Web 公共目录
+### 2. 同步到 Web 公共目录
 
 ```powershell
 cd .\web
 npm.cmd run sync:traces
 ```
 
-该脚本会把 `build/` 下的样例 trace 复制到：
+该脚本会把生成好的样例 trace 同步到 `web/public/traces/`。
 
-- `web/public/traces/`
+## Web 前端的当前组织方式
 
----
-
-## 8. 仓库结构
+`web/src/` 目前按以下方式组织：
 
 ```text
-myCPU_compatible/
-├── CMakeLists.txt
-├── main.cpp
-├── README.md
-├── config/
-├── cpu/
-├── device/
-├── loader/
-├── memory/
-├── tests/
-├── utils/
-└── web/
-    ├── package.json
-    ├── public/
-    ├── scripts/
-    └── src/
+app/         应用壳层、门户配置与导航
+assets/      前端静态资源
+components/  复用型界面组件
+features/    按教学功能划分的领域模块
+routes/      路由页面
+styles/      全局样式
 ```
 
----
+其中，`features/` 下的主要模块包括：
 
-## 9. 当前验证范围
+- `lesson_hazard/`：Hazard 教学互动
+- `pipeline/`：共享流水线展示组件
+- `trace/`：trace schema、样例与工作台逻辑
+- `traffic_game/`：方块调度互动
 
-当前仓库已覆盖并持续回归验证以下内容：
+## 当前统一入口
 
-- 内存读写与越界/未对齐检查
-- Loader 装载
-- UART 内存映射输出
-- 基本整数运算与逻辑运算
-- 访存
-- 分支
-- `slt`
-- `lu12i`
-- `uart`
-- 教学流水线样例：
-  - no hazard
-  - RAW
-  - forwarding
-  - load-use
-  - branch flush
+Web 前端当前保留三条主路径：
+
+- `/`：统一教学门户与工作台入口
+- `/hazard-puzzle`：Hazard 教学互动
+- `/traffic-control`：方块调度互动
+
+这三条路径共享同一项目语义和导航体系，不再作为彼此割裂的独立演示页使用。
+
+## 补充说明
+
+- 内置样例程序定义位于 `tests/test_programs.h`
+- CLI 入口定义位于 `main.cpp`
+- Web 端样例同步脚本位于 `web/scripts/sync-samples.ps1`
+- 里程碑补充文档位于 `docs/`
+
+如果命令行执行因步数上限提前结束，程序会以退出码 `2` 退出；若内置样例正常运行到模拟器 `HALT`，则可以在不显式设置 `--max-steps` 的情况下自然停止。
