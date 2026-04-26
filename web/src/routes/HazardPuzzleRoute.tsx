@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
 import { Panel } from "@/components/Panel";
+import { PortalHero } from "@/components/PortalHero";
 import { PipelineStageCanvas } from "@/features/pipeline/PipelineStageCanvas";
 import {
   buildHazardPuzzleFeedback,
@@ -117,7 +117,6 @@ export function HazardPuzzleRoute() {
   const maxIndex = activeTrace
     ? Math.min(activeLevel.previewEndStep, activeTrace.steps.length - 1)
     : activeLevel.previewEndStep;
-
   function goToLevel(index: number) {
     const nextLevel = hazardPuzzleLevels[index];
 
@@ -169,50 +168,51 @@ export function HazardPuzzleRoute() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.13),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(34,211,238,0.14),_transparent_26%),linear-gradient(180deg,_#12090a_0%,_#050816_40%,_#020617_100%)]">
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-        <motion.header
+        <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-[34px] border border-white/10 bg-slate-950/72 p-5 shadow-[0_30px_90px_rgba(2,6,23,0.38)] backdrop-blur"
         >
-          <div className="grid gap-4 xl:grid-cols-[1.1fr,0.9fr] xl:items-center">
-            <div className="space-y-3">
-              <Link
-                to="/"
-                className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs tracking-[0.24em] text-slate-300 transition hover:border-cyan-300/35 hover:text-slate-50"
-              >
-                返回工作台
-              </Link>
+          <PortalHero
+            sectionLabel="LoongArch 流水线教学"
+            title="Hazard 教学互动"
+            description="页面将流水线风险判断组织为分步练习，用于对照运行现场识别 RAW、旁路、load-use 与分支冲刷。"
+            tags={[
+              { label: "互动教学", tone: "amber" },
+              { label: "共享样例", tone: "cyan" },
+              { label: activeLevel.shortTitle, tone: "emerald" }
+            ]}
+            actions={[
+              { label: "返回工作台", to: "/", emphasis: "secondary" },
+              {
+                label: "在工作台查看对应样例",
+                to: `/?sample=${activeLevel.traceSampleId}`,
+                emphasis: "primary"
+              }
+            ]}
+          />
+        </motion.div>
 
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
-                  冒险判断练习
-                </h1>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs tracking-[0.22em] text-slate-400">当前关卡</p>
-                <p className="mt-3 text-xl font-semibold text-slate-50">
-                  {activeLevel.shortTitle}
-                </p>
-              </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs tracking-[0.22em] text-slate-400">焦点阶段</p>
-                <p className="mt-3 text-xl font-semibold text-slate-50">
-                  {activeLevel.focusStage.toUpperCase()}
-                </p>
-              </div>
-              <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
-                <p className="text-xs tracking-[0.22em] text-slate-400">完成进度</p>
-                <p className="mt-3 text-xl font-semibold text-slate-50">
-                  {solvedCount}/{hazardPuzzleLevels.length}
-                </p>
-              </div>
-            </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs tracking-[0.22em] text-slate-400">当前关卡</p>
+            <p className="mt-3 text-xl font-semibold text-slate-50">
+              {activeLevel.shortTitle}
+            </p>
           </div>
-        </motion.header>
+          <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs tracking-[0.22em] text-slate-400">焦点阶段</p>
+            <p className="mt-3 text-xl font-semibold text-slate-50">
+              {activeLevel.focusStage.toUpperCase()}
+            </p>
+          </div>
+          <div className="rounded-[26px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs tracking-[0.22em] text-slate-400">完成进度</p>
+            <p className="mt-3 text-xl font-semibold text-slate-50">
+              {solvedCount}/{hazardPuzzleLevels.length}
+            </p>
+          </div>
+        </div>
 
         <motion.main
           initial={{ opacity: 0, x: 14 }}

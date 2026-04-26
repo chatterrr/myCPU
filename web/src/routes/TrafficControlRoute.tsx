@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Link } from "react-router-dom";
 import { Panel } from "@/components/Panel";
+import { PortalHero } from "@/components/PortalHero";
 import { PipelineStageCanvas } from "@/features/pipeline/PipelineStageCanvas";
 import {
   getRegisterActivities,
@@ -378,6 +378,10 @@ export function TrafficControlRoute() {
   const nextBlueprint = session
     ? getNextBlueprint(resolvedBlueprints, session.nextBlueprintIds)
     : null;
+  const relatedSampleId =
+    selectedSnapshot?.blueprint.traceSampleId
+    ?? activeSnapshot?.blueprint.traceSampleId
+    ?? "pipeline-forward";
   const registerActivities = activeSnapshot
     ? getRegisterActivities(activeSnapshot.currentStep)
     : [];
@@ -392,55 +396,57 @@ export function TrafficControlRoute() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.22),_transparent_18%),radial-gradient(circle_at_top_right,_rgba(251,113,133,0.18),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(251,191,36,0.14),_transparent_24%),linear-gradient(180deg,_#01040d_0%,_#020611_38%,_#040916_100%)]">
       <div className="mx-auto flex min-h-screen max-w-[1840px] flex-col gap-5 px-3 py-4 sm:px-5 lg:px-6">
-        <motion.header
+        <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-[34px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_28%),linear-gradient(180deg,rgba(2,6,23,0.96),rgba(2,6,23,0.84))] p-4 shadow-[0_36px_110px_rgba(2,6,23,0.5)] backdrop-blur-xl"
         >
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-2">
-              <Link
-                to="/"
-                className="inline-flex items-center rounded-full border border-cyan-300/24 bg-cyan-300/10 px-4 py-2 text-xs tracking-[0.24em] text-cyan-50 transition hover:border-cyan-200/44 hover:bg-cyan-300/16"
-              >
-                返回工作台
-              </Link>
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
-                  流水线方块调度
-                </h1>
-              </div>
-            </div>
+          <PortalHero
+            sectionLabel="LoongArch 流水线教学"
+            title="流水线方块调度"
+            description="页面将代表性的流水线样例转换为可操作的调度方块，用于观察 forwarding、load-use 联锁与 branch flush 在调度过程中的影响。"
+            tags={[
+              { label: "互动教学", tone: "cyan" },
+              { label: "共享样例", tone: "emerald" },
+              { label: activeSnapshot?.blueprint.shortLabel ?? "等待入场", tone: "amber" }
+            ]}
+            actions={[
+              { label: "返回工作台", to: "/", emphasis: "secondary" },
+              {
+                label: "在工作台查看对应样例",
+                to: `/?sample=${relatedSampleId}`,
+                emphasis: "primary"
+              }
+            ]}
+          />
+        </motion.div>
 
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-[24px] border border-cyan-300/24 bg-cyan-300/10 p-4 shadow-[0_0_26px_rgba(34,211,238,0.08)]">
-                <p className="text-xs tracking-[0.2em] text-cyan-100/70">当前方块</p>
-                <p className="mt-2 text-lg font-semibold text-slate-50">
-                  {activeSnapshot?.blueprint.title ?? "等待入场"}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-emerald-300/24 bg-emerald-300/10 p-4 shadow-[0_0_26px_rgba(16,185,129,0.08)]">
-                <p className="text-xs tracking-[0.2em] text-emerald-100/70">当前阶段</p>
-                <p className="mt-2 text-lg font-semibold text-slate-50">
-                  {renderSnapshotStage(activeSnapshot)}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-rose-300/24 bg-rose-300/10 p-4 shadow-[0_0_26px_rgba(251,113,133,0.08)]">
-                <p className="text-xs tracking-[0.2em] text-rose-100/70">已锁定</p>
-                <p className="mt-2 text-lg font-semibold text-slate-50">
-                  {session?.lockedCount ?? 0}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-amber-300/24 bg-amber-300/10 p-4 shadow-[0_0_26px_rgba(251,191,36,0.08)]">
-                <p className="text-xs tracking-[0.2em] text-amber-100/70">已消行</p>
-                <p className="mt-2 text-lg font-semibold text-slate-50">
-                  {session?.lines ?? 0}
-                </p>
-              </div>
-            </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-[24px] border border-cyan-300/24 bg-cyan-300/10 p-4 shadow-[0_0_26px_rgba(34,211,238,0.08)]">
+            <p className="text-xs tracking-[0.2em] text-cyan-100/70">当前方块</p>
+            <p className="mt-2 text-lg font-semibold text-slate-50">
+              {activeSnapshot?.blueprint.title ?? "等待入场"}
+            </p>
           </div>
-        </motion.header>
+          <div className="rounded-[24px] border border-emerald-300/24 bg-emerald-300/10 p-4 shadow-[0_0_26px_rgba(16,185,129,0.08)]">
+            <p className="text-xs tracking-[0.2em] text-emerald-100/70">当前阶段</p>
+            <p className="mt-2 text-lg font-semibold text-slate-50">
+              {renderSnapshotStage(activeSnapshot)}
+            </p>
+          </div>
+          <div className="rounded-[24px] border border-rose-300/24 bg-rose-300/10 p-4 shadow-[0_0_26px_rgba(251,113,133,0.08)]">
+            <p className="text-xs tracking-[0.2em] text-rose-100/70">已锁定</p>
+            <p className="mt-2 text-lg font-semibold text-slate-50">
+              {session?.lockedCount ?? 0}
+            </p>
+          </div>
+          <div className="rounded-[24px] border border-amber-300/24 bg-amber-300/10 p-4 shadow-[0_0_26px_rgba(251,191,36,0.08)]">
+            <p className="text-xs tracking-[0.2em] text-amber-100/70">已消行</p>
+            <p className="mt-2 text-lg font-semibold text-slate-50">
+              {session?.lines ?? 0}
+            </p>
+          </div>
+        </div>
 
         <motion.section
           initial={{ opacity: 0, y: 10 }}
@@ -510,6 +516,7 @@ export function TrafficControlRoute() {
             <div className="grid gap-5 xl:grid-cols-2 xl:items-stretch">
               <Panel
                 title="状态卡"
+                description="显示选中方块对应的指令、阶段、风险类型与当前提示。"
                 className="flex h-full min-h-0 flex-col border-amber-300/22 shadow-[0_28px_90px_rgba(251,191,36,0.08)]"
               >
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -519,6 +526,7 @@ export function TrafficControlRoute() {
 
               <Panel
                 title="调度信息"
+                description="显示节拍、下一方块、最近动作和系统反馈，并提供暂停与重开控制。"
                 className="flex h-full min-h-0 flex-col border-emerald-300/22 shadow-[0_28px_90px_rgba(16,185,129,0.08)]"
               >
                 <div className="flex h-full flex-1 flex-col">
@@ -593,6 +601,7 @@ export function TrafficControlRoute() {
 
             <Panel
               title="寄存器看板"
+              description="按寄存器列出当前读写与目标写回活动，用于观察数据相关性。"
               className="flex-1 border-lime-300/22 shadow-[0_28px_90px_rgba(132,204,22,0.08)]"
             >
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">

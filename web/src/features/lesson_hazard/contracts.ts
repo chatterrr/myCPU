@@ -30,10 +30,3 @@ export interface HazardPuzzleFeedback {
   flowHints: HazardFlowHint[];
 }
 
-export const hazardLessonContractNotes = [
-  "Input: TraceDocument plus the currently focused cycle and stage.",
-  "Output: answer status plus reusable stage highlights and flow hints.",
-  "UI hook: keep the existing trace schema and layer puzzle visuals on top.",
-  "M10 reuse: the same stage-highlight and flow-hint primitives can drive traffic HUDs."
-];
-
